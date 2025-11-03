@@ -50,7 +50,7 @@ SECRET_KEY = 'django-insecure-&^b&x7_6=!%r-d*y#av=uzs3(qjl&ie^e&+vb)rjw!@n5j58yr
 
 DEBUG = True
 
-ALLOWED_HOSTS = ["trancit-transit-guide.onrender.com",]
+ALLOWED_HOSTS = ["trancit-transit-guide.onrender.com", '127.0.0.1']
 
 
 # Application definition
