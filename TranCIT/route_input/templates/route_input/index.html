@@ -125,7 +125,7 @@
         {% endif %}
 
         {% if user.is_authenticated %}
-          <button type="button" id="saveMyRouteBtn" class="btn primary">
+          <button type="button" id="saveMyRouteBtn" class="btn primary" {% if not calculated_distance %}disabled{% endif %}>
             <i class="fa-solid fa-heart"></i> Save My Route
           </button>
         {% else %}
@@ -135,6 +135,7 @@
         {% endif %}
       </form>
 
+      {% if user.is_authenticated %}
       <div class="saved-locations">
         <h4><i class="fa-solid fa-star"></i> My Saved Routes</h4>
         <p style="font-size: 12px; color: #666;">Your frequently used routes</p>
@@ -158,23 +159,27 @@
                   <p style="margin: 0; font-size: 11px; color: #4CAF50;">Php {{ saved.fare|floatformat:2 }}</p>
                 </div>
                 <div class="saved-route-actions">
-                  <button type="button" class="btn-icon use-saved-route" 
-                          data-origin="{{ saved.origin }}"
-                          data-destination="{{ saved.destination }}"
-                          data-origin-lat="{{ saved.origin_latitude }}"
-                          data-origin-lon="{{ saved.origin_longitude }}"
-                          data-dest-lat="{{ saved.destination_latitude }}"
-                          data-dest-lon="{{ saved.destination_longitude }}"
-                          data-transport="{{ saved.transport_type }}"
-                          data-code="{{ saved.code }}"
-                          title="Use this route">
-                    <i class="fa-solid fa-arrow-right"></i>
-                  </button>
-                  <button type="button" class="btn-icon delete-saved-route" 
-                          data-saved-id="{{ saved.id }}"
-                          title="Delete">
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
+                  <div class="saved-route-actions">
+                    <button type="button" class="btn btn-sm view-saved-route" 
+                        style="flex: 1; background-color: #2196F3; color: white;"
+                        data-route-id="{{ saved.id }}"
+                        data-path="{{ saved.route_path_coords|escapejs }}"
+                        data-origin-lat="{{ saved.origin_latitude }}"
+                        data-origin-lon="{{ saved.origin_longitude }}"
+                        data-dest-lat="{{ saved.destination_latitude }}"
+                        data-dest-lon="{{ saved.destination_longitude }}"
+                        data-route-origin="{{ saved.origin }}"
+                        data-route-destination="{{ saved.destination }}"
+                        title="View on map">
+                        <i class="fa-solid fa-map"></i> View
+                    </button>
+                    
+                    <button type="button" class="btn btn-sm delete-saved-route" 
+                            style="flex: 1; background-color: #dc3545; color: white;"
+                            data-saved-id="{{ saved.id }}"
+                            title="Delete">
+                      <i class="fa-solid fa-trash"></i> Delete
+                    </button>
                 </div>
               </li>
             {% endfor %}
@@ -183,7 +188,7 @@
           {% endif %}
         </ul>
       </div>
-    </aside>
+      {% endif %} </aside>
 
     <main class="map-area">
       <div id="map-loader" class="loader">
@@ -227,7 +232,7 @@
                   {% endif %}
                 </div>
                 <div style="display: flex; gap: 5px; margin-top: 8px;">
-                  <button type="button" class="btn btn-sm view-journey-on-map-btn" style="flex: 1; background-color: #2196F3; color: white;"
+                  <!-- <button type="button" class="btn btn-sm view-journey-on-map-btn" style="flex: 1; background-color: #2196F3; color: white;"
                           data-route-id="{{ route.id }}"
                           data-origin-lat="{{ route.origin_latitude }}"
                           data-origin-lon="{{ route.origin_longitude }}"
@@ -240,12 +245,29 @@
                           onclick="window.location.href='?route_id={{ route.id }}'"
                           title="View this route on the map">
                     <i class="fa-solid fa-map"></i> View Route
+                  </button> -->
+                  <!-- Change route to use path coordinates for more accurate display -->
+                  <button type="button" class="btn btn-sm view-suggested-route" style="flex: 1; background-color: #2196F3; color: white;"
+                      data-route-id="{{ route.id }}"
+                      data-path="{{ route.route_path_coords|escapejs }}"
+                      data-origin-lat="{{ route.origin_latitude }}"
+                      data-origin-lon="{{ route.origin_longitude }}"
+                      data-dest-lat="{{ route.destination_latitude }}"
+                      data-dest-lon="{{ route.destination_longitude }}"
+                      data-route-origin="{{ route.origin }}"
+                      data-route-destination="{{ route.destination }}"
+                      title="View this route on the map">
+                      <i class="fa-solid fa-map"></i> View Route
                   </button>
-                  <button type="button" class="btn btn-sm save-suggested-route" style="flex: 1; background-color: #4CAF50; color: white;"
-                          data-route-id="{{ route.id }}"
-                          title="Save this route to your favorites">
-                    <i class="fa-solid fa-heart"></i> Save
-                  </button>
+
+                    {% if user.is_authenticated %}
+                    <button type="button" class="btn btn-sm save-suggested-route" 
+                            style="flex: 1; background-color: #4CAF50; color: white;"
+                            data-route-id="{{ route.id }}"
+                            title="Save this route to your favorites">
+                      <i class="fa-solid fa-heart"></i> Save
+                    </button>
+                    {% endif %}
                 </div>
               </div>
             {% endif %}
