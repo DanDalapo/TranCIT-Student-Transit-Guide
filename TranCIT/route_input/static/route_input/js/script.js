@@ -19,10 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const codeInput = $('#id_code'); // This can be null, which is the source of the error
     const notesInput = $('#id_notes');
     const detectBtn = $('#detectLocationBtn');
-    const saveBtn = $('#saveMyRouteBtn');
+    const saveMyRouteBtn = $('#saveMyRouteBtn');
     const pinOriginBtn = $('#pinOriginBtn');
     const pinDestinationBtn = $('#pinDestinationBtn');
     const navigateBtn = $('#navigateBtn');
+
+    const mapIframe = $('#map-container iframe');
+    let foliumMap; // Will hold the map object from the iframe
+    let L_Leaflet; // Will hold the 'L' (Leaflet) object from the iframe
+    let activeRouteLayers = {}; // To store [routeId]: layer
 
     const csrftoken = document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1];
 
@@ -43,6 +48,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const newUrl = `${window.location.pathname}?${qs(params)}`;
         window.history.replaceState({}, '', newUrl);
     };
+    
+    function getMapObjects() {
+        if (foliumMap && L_Leaflet) return true; // Already found
+
+        if (mapIframe && mapIframe.contentWindow) {
+            // 'map' and 'L' are exposed by Folium's JS inside the iframe
+            if (mapIframe.contentWindow.map) {
+                foliumMap = mapIframe.contentWindow.map;
+            }
+            if (mapIframe.contentWindow.L) {
+                L_Leaflet = mapIframe.contentWindow.L;
+            }
+        }
+        
+        return foliumMap && L_Leaflet;
+    }
+    // Try to get them after a short delay to let the iframe load
+    setTimeout(getMapObjects, 1500);
 
     // === Toggle Navigate Button ===
     function toggleNavigateButton() {
@@ -79,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // === Tooltip for Navigate Button ===
     const tooltip = document.createElement('div');
+    
     tooltip.textContent = 'Please pin both your origin and destination';
     Object.assign(tooltip.style, {
         position: 'absolute',
@@ -103,6 +127,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const hideTooltip = () => (tooltip.style.opacity = '0');
     navigateBtn?.addEventListener('mousemove', showTooltip);
     navigateBtn?.addEventListener('mouseleave', hideTooltip);
+
+    // === Tooltip for Save Route Button ===
+    const saveTooltip = document.createElement('div');
+    saveTooltip.textContent = 'Please navigate a route first before saving';
+    Object.assign(saveTooltip.style, {
+        position: 'absolute',
+        background: '#333',
+        color: '#fff',
+        padding: '6px 10px',
+        borderRadius: '6px',
+        fontSize: '12px',
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        opacity: '0',
+        transition: 'opacity 0.2s'
+    });
+    document.body.appendChild(saveTooltip);
+
+    const showSaveTooltip = (e) => {
+        if (!saveMyRouteBtn.disabled) return;
+        saveTooltip.style.left = e.pageX + 15 + 'px';
+        saveTooltip.style.top = e.pageY - 35 + 'px';
+        saveTooltip.style.opacity = '1';
+    };
+    const hideSaveTooltip = () => (saveTooltip.style.opacity = '0');
+    saveMyRouteBtn?.addEventListener('mousemove', showSaveTooltip);
+    saveMyRouteBtn?.addEventListener('mouseleave', hideSaveTooltip);
 
     // === Map Pin Commands ===
     function sendPinCommand(mode) {
@@ -289,4 +340,276 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!suggestionsContainer.contains(e.target) && e.target !== destinationInput)
             suggestionsContainer.style.display = 'none';
     });
+
+    // 1. Save a "Custom" or "Planned" Route
+    if (saveMyRouteBtn) {
+        saveMyRouteBtn.addEventListener('click', () => {
+            console.log('Save My Route button clicked');
+            const formData = new FormData();
+            
+            // Gather all the data from the form
+            formData.append('origin', $('#id_origin').value);
+            formData.append('destination', $('#id_destination').value);
+            formData.append('transport_type', $('#id_transport_type').value);
+            
+            // Get coordinates
+            formData.append('origin_latitude', $('#id_origin_latitude').value);
+            formData.append('origin_longitude', $('#id_origin_longitude').value);
+            formData.append('destination_latitude', $('#id_destination_latitude').value);
+            formData.append('destination_longitude', $('#id_destination_longitude').value);
+            
+            // Get calculated details
+            formData.append('fare', $('#id_fare').value);
+            formData.append('distance_km', $('#id_distance_km').value);
+            formData.append('travel_time_minutes', $('#id_travel_time_minutes').value);
+            formData.append('notes', $('#id_notes').value);
+            
+            // Handle Jeepney code
+            if ($('#id_transport_type').value === 'Jeepney') {
+                // NOTE: Your template doesn't have an 'id_code' field
+                // in the main form. We'll try to get it from the 
+                // 'suggest_code' form as a fallback.
+                const codeInput = $('#suggest_code');
+                if (codeInput && codeInput.value) {
+                     formData.append('code', codeInput.value);
+                } else {
+                     formData.append('code', 'UNKNOWN');
+                }
+            }
+            
+            // Call the backend view
+            performSave('/routes/save_current_route/', formData);
+        });
+    }
+
+    // 2. Save a "Suggested" Route
+    const saveSuggestionsContainer = $('#dynamicSuggestions');
+    if (saveSuggestionsContainer) {
+        saveSuggestionsContainer.addEventListener('click', (e) => {
+            const saveButton = e.target.closest('.save-suggested-route');
+            const viewButton = e.target.closest('.view-suggested-route');
+            if (saveButton) {
+                const routeId = saveButton.dataset.routeId;
+                if (!routeId) {
+                    alert('Error: No route ID found.');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('route_id', routeId);
+                
+                // Call the backend view
+                performSave('/routes/save_suggested_route/', formData);
+            }
+            if (viewButton) { // <-- ADD THIS ENTIRE BLOCK
+                console.log('View Route button clicked');
+                handleViewRouteClick(viewButton);
+            }
+        });
+    }
+
+
+    /**
+     * Handles the logic for viewing/unviewing a suggested route on the map.
+     */
+    function handleViewRouteClick(button) {
+        // Try to get map objects.
+        if (!getMapObjects()) {
+            alert('Map is not ready yet. Please wait a moment and try again.');
+            return;
+        }
+
+        const routeId = button.dataset.routeId;
+        const isViewing = button.classList.contains('viewing');
+
+        if (isViewing) {
+            // --- UNVIEW ---
+            if (activeRouteLayers[routeId]) {
+                foliumMap.removeLayer(activeRouteLayers[routeId]); 
+                delete activeRouteLayers[routeId]; 
+            }
+            const originalText = button.classList.contains('view-saved-route') ? 'View' : 'View Route';
+            button.innerHTML = `<i class="fa-solid fa-map"></i> ${originalText}`;
+            button.classList.remove('viewing');
+            button.style.backgroundColor = '#2196F3'; 
+        } else {
+            // --- VIEW ---
+            const ds = button.dataset; 
+            
+            if (!ds.path || ds.path.length < 3 || !ds.originLat || !ds.destLat) {
+                alert('Error: No path data found for this route. If this is a route you saved earlier, please delete it and save it again.');
+                return;
+            }
+
+            try {
+                const pathCoords = JSON.parse(ds.path);
+                const originPopup = ds.routeOrigin || "Origin";
+                const destPopup = ds.routeDestination || "Destination";
+
+                // 1. Create the Polyline
+                const polyline = L_Leaflet.polyline(pathCoords, {
+                    color: 'purple',
+                    weight: 4,
+                    opacity: 0.8
+                });
+
+                // --- 2. Create Markers (FIXED with capital 'A') ---
+                let originMarker, destMarker;
+
+                try {
+                    // --- THIS IS THE FIX ---
+                    // It's L_Leaflet.AwesomeMarkers (capital A)
+                    const originIcon = L_Leaflet.AwesomeMarkers.icon({
+                        icon: 'circle',
+                        prefix: 'fa',
+                        markerColor: 'blue' 
+                    });
+                    
+                    const destIcon = L_Leaflet.AwesomeMarkers.icon({
+                        icon: 'circle',
+                        prefix: 'fa',
+                        markerColor: 'red' 
+                    });
+                    // --- END OF FIX ---
+
+                    originMarker = L_Leaflet.marker([ds.originLat, ds.originLon], {icon: originIcon})
+                        .bindPopup(originPopup);
+
+                    destMarker = L_Leaflet.marker([ds.destLat, ds.destLon], {icon: destIcon})
+                        .bindPopup(destPopup);
+
+                } catch (iconError) {
+                    // --- FALLBACK ---
+                    console.warn("L.AwesomeMarkers.icon failed, using default pins. Error:", iconError);
+                    originMarker = L_Leaflet.marker([ds.originLat, ds.originLon]).bindPopup(originPopup);
+                    destMarker = L_Leaflet.marker([ds.destLat, ds.destLon]).bindPopup(destPopup);
+                }
+                // --- END OF MARKER BLOCK ---
+
+
+                // 3. Create a FeatureGroup
+                const routeLayerGroup = L_Leaflet.featureGroup([polyline, originMarker, destMarker]);
+                
+                routeLayerGroup.addTo(foliumMap);
+                
+                foliumMap.fitBounds(routeLayerGroup.getBounds().pad(0.1));
+                
+                activeRouteLayers[routeId] = routeLayerGroup;
+
+                // Update button
+                const unviewText = button.classList.contains('view-saved-route') ? 'Unview' : 'Unview Route';
+                button.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${unviewText}`;
+                button.classList.add('viewing');
+                button.style.backgroundColor = '#f44336'; 
+
+            } catch (err) {
+                console.error('An error occurred inside the handleViewRouteClick try-block:', err);
+                alert('Error: Could not display this route. See console (F12) for technical details.');
+            }
+        }
+    }
+    
+    /**
+     * Helper function to perform the AJAX save operation.
+     */
+    async function performSave(url, formData) {
+        if (!csrftoken) { // 'csrftoken' is defined at the top of your script.js
+            alert('Error: CSRF token not found. Please refresh the page.');
+            return;
+        }
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.message) {
+                alert(data.message); // Show success message
+                // Reload the page to show the new item in "My Saved Routes"
+                window.location.reload();
+            } else {
+                alert('Error saving route: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Save route failed:', error);
+            alert('An error occurred while trying to save the route.');
+        }
+    }
+
+    //Delete Saved Route
+    const savedListContainer = $('#savedList');
+    if (savedListContainer) {
+        savedListContainer.addEventListener('click', (e) => {
+            const deleteButton = e.target.closest('.delete-saved-route');
+            const viewButton = e.target.closest('.view-saved-route');
+            if (deleteButton) {
+                console.log('Delete button clicked'); // For debugging
+
+                const savedId = deleteButton.dataset.savedId;
+                if (!savedId) {
+                    alert('Error: Could not find route ID to delete.');
+                    return;
+                }
+
+                if (confirm('Are you sure you want to delete this route?')) {
+                    const formData = new FormData();
+                    formData.append('saved_id', savedId);
+
+                    // We need a new delete helper function that removes the element
+                    // instead of reloading the page.
+                    const elementToRemove = deleteButton.closest('.saved-route-item');
+                    performDelete('/routes/delete_saved_route/', formData, elementToRemove);
+                }
+            }
+
+            if (viewButton) { 
+                console.log('View Saved Route button clicked');
+                // We can reuse the same handler function!
+                handleViewRouteClick(viewButton); 
+            }
+        });
+    }
+
+    /**
+     * Helper function to perform the AJAX DELETE operation.
+     */
+    async function performDelete(url, formData, elementToRemove) {
+        if (!csrftoken) { 
+            alert('Error: CSRF token not found. Please refresh the page.');
+            return;
+        }
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST', // Django views expect POST for safety
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Success! Remove the route from the list without reloading.
+                elementToRemove.style.opacity = '0';
+                setTimeout(() => {
+                    elementToRemove.remove();
+                }, 300); // Wait for fade out
+            } else {
+                alert('Error deleting route: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Delete route failed:', error);
+            alert('An error occurred while trying to delete the route.');
+        }
+    }
 });
