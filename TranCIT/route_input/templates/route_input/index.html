@@ -18,9 +18,15 @@
       </li>
       <input type="text" placeholder="Search..">
       <li class="logout-container">
-        <a href="{% url 'logout' %}" class="logout-btn" onclick="handleLogout(event)">
-          Log out
-        </a>
+        {% if user.is_authenticated %}
+          <a href="{% url 'logout' %}" class="logout-btn">
+            Log out
+          </a>
+        {% else %}
+          <a href="{% url 'login_registration:login' %}" class="guest-exit-btn">
+            Exit Guest
+          </a>
+        {% endif %}
       </li>
   </div>
 
@@ -118,9 +124,15 @@
           <p class="error-message">{{ error_message }}</p>
         {% endif %}
 
-        <button type="button" id="saveMyRouteBtn" class="btn primary">
-          <i class="fa-solid fa-heart"></i> Save My Route
-        </button>
+        {% if user.is_authenticated %}
+          <button type="button" id="saveMyRouteBtn" class="btn primary">
+            <i class="fa-solid fa-heart"></i> Save My Route
+          </button>
+        {% else %}
+          <button type="button" class="btn primary" disabled title="Unavailable in Guest Mode">
+            <i class="fa-solid fa-heart"></i> Save My Route
+          </button>
+        {% endif %}
       </form>
 
       <div class="saved-locations">
@@ -252,42 +264,52 @@
       <hr style="margin: 20px 0;">
 
       <h4><i class="fa-solid fa-share-nodes"></i> Suggest a Jeepney Route</h4>
-      <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-        Help others by sharing jeepney routes you know
-      </p>
-      
-      <form id="suggestRouteForm" method="post" action="{% url 'suggest_route' %}">
-        {% csrf_token %}
-        <input type="hidden" name="form_type" value="suggest_route">
-        <input type="hidden" name="transport_type" value="Jeepney">
-        
-        <label for="suggest_origin">Route Origin</label>
-        <input type="text" name="origin" id="suggest_origin" 
-               placeholder="e.g., SM City Cebu" 
-               class="form-control" required>
-        
-        <label for="suggest_destination">Route Destination</label>
-        <input type="text" name="destination" id="suggest_destination" 
-               placeholder="e.g., Ayala Center" 
-               class="form-control" required>
-        
-        <label for="suggest_code">Jeepney Code</label>
-        <select name="code" id="suggest_code" class="form-control" required>
-          <option value="">Select jeepney code</option>
-          {% for code_value, code_label in form.code.field.choices %}
-            <option value="{{ code_value }}">{{ code_label }}</option>
-          {% endfor %}
-        </select>
-        
-        <label for="suggest_notes">Route Details (Optional)</label>
-        <textarea name="notes" id="suggest_notes" 
-                  placeholder="Additional info about this route..." 
-                  rows="3" class="form-control"></textarea>
-        
-        <button type="submit" class="btn primary">
-          <i class="fa-solid fa-paper-plane"></i> Submit Suggestion
-        </button>
-      </form>
+      {% if user.is_authenticated %}
+        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+          Help others by sharing jeepney routes you know
+        </p>
+        <form id="suggestRouteForm" method="post" action="{% url 'suggest_route' %}">
+          {% csrf_token %}
+          <input type="hidden" name="form_type" value="suggest_route">
+          <input type="hidden" name="transport_type" value="Jeepney">
+          
+          <label for="suggest_origin">Route Origin</label>
+          <input type="text" name="origin" id="suggest_origin" 
+                 placeholder="e.g., SM City Cebu" 
+                 class="form-control" required>
+          
+          <label for="suggest_destination">Route Destination</label>
+          <input type="text" name="destination" id="suggest_destination" 
+                 placeholder="e.g., Ayala Center" 
+                 class="form-control" required>
+          
+          <label for="suggest_code">Jeepney Code</label>
+          <select name="code" id="suggest_code" class="form-control" required>
+            <option value="">Select jeepney code</option>
+            {% for code_value, code_label in suggestion_form.code.field.choices %}
+              <option value="{{ code_value }}">{{ code_label }}</option>
+            {% endfor %}
+          </select>
+          
+          <label for="suggest_notes">Route Details (Optional)</label>
+          <textarea name="notes" id="suggest_notes" 
+                    placeholder="Additional info about this route..." 
+                    rows="3" class="form-control"></textarea>
+          
+          <button type="submit" class="btn primary">
+            <i class="fa-solid fa-paper-plane"></i> Submit Suggestion
+          </button>
+        </form>
+      {% else %}
+        <div class="guest-restriction-notice">
+          <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+            You must have an account to suggest a route.
+          </p>
+          <button type="button" class="btn primary" disabled title="Unavailable in Guest Mode">
+            <i class="fa-solid fa-paper-plane"></i> Submit Suggestion
+          </button>
+        </div>
+      {% endif %}
     </aside>
 
   </div>

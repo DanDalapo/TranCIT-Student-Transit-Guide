@@ -83,6 +83,7 @@ body {
 
 .topNav .logout-container {
   margin-left: auto;
+  padding-right: 10px; /* Added padding for spacing */
 }
 
 .topNav .logout-btn {
@@ -786,4 +787,32 @@ hr {
 
 .flex-1 {
   flex: 1;
+}
+
+/* --- ADD THIS FOR GUEST MODE --- */
+
+/* Style for grayed-out buttons */
+.btn[disabled] {
+    background-color: #cccccc !important;
+    color: #666666 !important;
+    cursor: not-allowed !important;
+    border-color: #999999 !important;
+}
+
+/* Style for the guest exit button in the top nav */
+.guest-exit-btn {
+    display: block;
+    margin: 0 10px;
+    padding: 8px 16px;
+    background-color: #6c757d; /* A neutral gray color */
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.guest-exit-btn:hover {
+    background-color: #5a6268;
 }

@@ -6,7 +6,7 @@ from django.conf import settings
 from django.db import DatabaseError
 from django.db.models import Q
 from django.views.decorators.http import require_POST, require_GET
-from django.contrib.auth.decorators import login_required
+# The 'login_required' import is removed from here
 from django.contrib.auth import logout
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.utils import timezone
@@ -20,7 +20,7 @@ import logging
 import folium
 
 # --- 1. ADD THIS IMPORT ---
-from django.urls import reverse 
+from django.urls import reverse
 # --- END 1. ---
 
 from .forms import RouteForm, JeepneySuggestionForm
@@ -255,7 +255,7 @@ def store_route_path(route_instance, route_geojson):
         logger.exception("Failed storing route path")
 
 
-@login_required(login_url='/')
+# The @login_required decorator has been removed from this function
 def index(request):
     """Main dashboard view. Builds the folium map and handles route calculation for display."""
     error_message = None
@@ -517,14 +517,19 @@ def plan_route(request):
         route_instance.code = request.POST.get('code')
 
     try:
-        route_instance.save()
-        logger.info("Saved route %s -> %s (id=%s)", route_instance.origin, route_instance.destination, route_instance.id)
-        
-        # --- 2. CHANGE THIS LINE ---
+        # --- MODIFICATION START ---
+        # Only save the route to the main DB if the user is authenticated.
+        if request.user.is_authenticated:
+            route_instance.save()
+            logger.info("User %s saved route %s -> %s (id=%s)", request.user.username, route_instance.origin, route_instance.destination, route_instance.id)
+        else:
+            logger.info("Guest planned a temporary route %s -> %s", route_instance.origin, route_instance.destination)
+        # --- MODIFICATION END ---
+            
+        # This part runs for everyone (guests and users)
         base_url = reverse('routes_page')
         query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
         return redirect(f"{base_url}?{query_params}")
-        # --- END 2. ---
 
     except DatabaseError:
         logger.exception("DB Error saving route")
