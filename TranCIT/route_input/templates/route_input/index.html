@@ -9,7 +9,6 @@
 </head>
 <body>
 
-  <!-- topnav / header -->
   <div class="topNav">
     <ul>
       <li>
@@ -19,17 +18,23 @@
       </li>
       <input type="text" placeholder="Search..">
       <li class="logout-container">
-        <a href="{% url 'logout' %}" class="logout-btn" onclick="handleLogout(event)">
-          Log out
-        </a>
+        {% if user.is_authenticated %}
+          <a href="{% url 'logout' %}" class="logout-btn">
+            Log out
+          </a>
+        {% else %}
+          <a href="{% url 'login_registration:login' %}" class="guest-exit-btn">
+            Exit Guest
+          </a>
+        {% endif %}
       </li>
   </div>
 
   <div class="container">
-    <!-- Left Panel (User's Route Planning) -->
     <aside class="sidebar">
       <h3>Plan Your Route</h3>
-      <form id="routeForm" method="post" action="{% url 'routes_page' %}" novalidate>
+      
+      <form id="routeForm" method="post" action="{% url 'plan_route' %}" novalidate>
         {% csrf_token %}
         <input type="hidden" name="form_type" value="plan_route">
 
@@ -77,9 +82,9 @@
           {% if form.transport_type.errors %}{{ form.transport_type.errors }}{% endif %}
         </span>
 
-        <!-- Add this block below -->
         <div class="form-actions" style="margin-top: 10px;">
-          <button type="button" class="btn primary" id="navigateBtn">
+          
+          <button type="submit" class="btn primary" id="navigateBtn">
             <i class="fa-solid fa-route"></i> Navigate Route
           </button>
         </div>
@@ -119,11 +124,18 @@
           <p class="error-message">{{ error_message }}</p>
         {% endif %}
 
-        <button type="button" id="saveMyRouteBtn" class="btn primary">
-          <i class="fa-solid fa-heart"></i> Save My Route
-        </button>
+        {% if user.is_authenticated %}
+          <button type="button" id="saveMyRouteBtn" class="btn primary" {% if not calculated_distance %}disabled{% endif %}>
+            <i class="fa-solid fa-heart"></i> Save My Route
+          </button>
+        {% else %}
+          <button type="button" class="btn primary" disabled title="Unavailable in Guest Mode">
+            <i class="fa-solid fa-heart"></i> Save My Route
+          </button>
+        {% endif %}
       </form>
 
+      {% if user.is_authenticated %}
       <div class="saved-locations">
         <h4><i class="fa-solid fa-star"></i> My Saved Routes</h4>
         <p style="font-size: 12px; color: #666;">Your frequently used routes</p>
@@ -147,23 +159,27 @@
                   <p style="margin: 0; font-size: 11px; color: #4CAF50;">Php {{ saved.fare|floatformat:2 }}</p>
                 </div>
                 <div class="saved-route-actions">
-                  <button type="button" class="btn-icon use-saved-route" 
-                          data-origin="{{ saved.origin }}"
-                          data-destination="{{ saved.destination }}"
-                          data-origin-lat="{{ saved.origin_latitude }}"
-                          data-origin-lon="{{ saved.origin_longitude }}"
-                          data-dest-lat="{{ saved.destination_latitude }}"
-                          data-dest-lon="{{ saved.destination_longitude }}"
-                          data-transport="{{ saved.transport_type }}"
-                          data-code="{{ saved.code }}"
-                          title="Use this route">
-                    <i class="fa-solid fa-arrow-right"></i>
-                  </button>
-                  <button type="button" class="btn-icon delete-saved-route" 
-                          data-saved-id="{{ saved.id }}"
-                          title="Delete">
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
+                  <div class="saved-route-actions">
+                    <button type="button" class="btn btn-sm view-saved-route" 
+                        style="flex: 1; background-color: #2196F3; color: white;"
+                        data-route-id="{{ saved.id }}"
+                        data-path="{{ saved.route_path_coords|escapejs }}"
+                        data-origin-lat="{{ saved.origin_latitude }}"
+                        data-origin-lon="{{ saved.origin_longitude }}"
+                        data-dest-lat="{{ saved.destination_latitude }}"
+                        data-dest-lon="{{ saved.destination_longitude }}"
+                        data-route-origin="{{ saved.origin }}"
+                        data-route-destination="{{ saved.destination }}"
+                        title="View on map">
+                        <i class="fa-solid fa-map"></i> View
+                    </button>
+                    
+                    <button type="button" class="btn btn-sm delete-saved-route" 
+                            style="flex: 1; background-color: #dc3545; color: white;"
+                            data-saved-id="{{ saved.id }}"
+                            title="Delete">
+                      <i class="fa-solid fa-trash"></i> Delete
+                    </button>
                 </div>
               </li>
             {% endfor %}
@@ -172,9 +188,8 @@
           {% endif %}
         </ul>
       </div>
-    </aside>
+      {% endif %} </aside>
 
-    <!-- Map Area -->
     <main class="map-area">
       <div id="map-loader" class="loader">
         Loading map...
@@ -185,7 +200,6 @@
       </div>
     </main>
 
-    <!-- Right Panel (Community Route Suggestions) -->
     <aside class="suggestions">
       <h3><i class="fa-solid fa-lightbulb"></i> Jeepney Route Suggestions</h3>
       <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Community-contributed jeepney routes</p>
@@ -218,7 +232,7 @@
                   {% endif %}
                 </div>
                 <div style="display: flex; gap: 5px; margin-top: 8px;">
-                  <button type="button" class="btn btn-sm view-journey-on-map-btn" style="flex: 1; background-color: #2196F3; color: white;"
+                  <!-- <button type="button" class="btn btn-sm view-journey-on-map-btn" style="flex: 1; background-color: #2196F3; color: white;"
                           data-route-id="{{ route.id }}"
                           data-origin-lat="{{ route.origin_latitude }}"
                           data-origin-lon="{{ route.origin_longitude }}"
@@ -231,12 +245,29 @@
                           onclick="window.location.href='?route_id={{ route.id }}'"
                           title="View this route on the map">
                     <i class="fa-solid fa-map"></i> View Route
+                  </button> -->
+                  <!-- Change route to use path coordinates for more accurate display -->
+                  <button type="button" class="btn btn-sm view-suggested-route" style="flex: 1; background-color: #2196F3; color: white;"
+                      data-route-id="{{ route.id }}"
+                      data-path="{{ route.route_path_coords|escapejs }}"
+                      data-origin-lat="{{ route.origin_latitude }}"
+                      data-origin-lon="{{ route.origin_longitude }}"
+                      data-dest-lat="{{ route.destination_latitude }}"
+                      data-dest-lon="{{ route.destination_longitude }}"
+                      data-route-origin="{{ route.origin }}"
+                      data-route-destination="{{ route.destination }}"
+                      title="View this route on the map">
+                      <i class="fa-solid fa-map"></i> View Route
                   </button>
-                  <button type="button" class="btn btn-sm save-suggested-route" style="flex: 1; background-color: #4CAF50; color: white;"
-                          data-route-id="{{ route.id }}"
-                          title="Save this route to your favorites">
-                    <i class="fa-solid fa-heart"></i> Save
-                  </button>
+
+                    {% if user.is_authenticated %}
+                    <button type="button" class="btn btn-sm save-suggested-route" 
+                            style="flex: 1; background-color: #4CAF50; color: white;"
+                            data-route-id="{{ route.id }}"
+                            title="Save this route to your favorites">
+                      <i class="fa-solid fa-heart"></i> Save
+                    </button>
+                    {% endif %}
                 </div>
               </div>
             {% endif %}
@@ -255,41 +286,52 @@
       <hr style="margin: 20px 0;">
 
       <h4><i class="fa-solid fa-share-nodes"></i> Suggest a Jeepney Route</h4>
-      <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-        Help others by sharing jeepney routes you know
-      </p>
-      <form id="suggestRouteForm" method="post" action="{% url 'routes_page' %}">
-        {% csrf_token %}
-        <input type="hidden" name="form_type" value="suggest_route">
-        <input type="hidden" name="transport_type" value="Jeepney">
-        
-        <label for="suggest_origin">Route Origin</label>
-        <input type="text" name="origin" id="suggest_origin" 
-               placeholder="e.g., SM City Cebu" 
-               class="form-control" required>
-        
-        <label for="suggest_destination">Route Destination</label>
-        <input type="text" name="destination" id="suggest_destination" 
-               placeholder="e.g., Ayala Center" 
-               class="form-control" required>
-        
-        <label for="suggest_code">Jeepney Code</label>
-        <select name="code" id="suggest_code" class="form-control" required>
-          <option value="">Select jeepney code</option>
-          {% for code_value, code_label in form.code.field.choices %}
-            <option value="{{ code_value }}">{{ code_label }}</option>
-          {% endfor %}
-        </select>
-        
-        <label for="suggest_notes">Route Details (Optional)</label>
-        <textarea name="notes" id="suggest_notes" 
-                  placeholder="Additional info about this route..." 
-                  rows="3" class="form-control"></textarea>
-        
-        <button type="submit" class="btn primary">
-          <i class="fa-solid fa-paper-plane"></i> Submit Suggestion
-        </button>
-      </form>
+      {% if user.is_authenticated %}
+        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+          Help others by sharing jeepney routes you know
+        </p>
+        <form id="suggestRouteForm" method="post" action="{% url 'suggest_route' %}">
+          {% csrf_token %}
+          <input type="hidden" name="form_type" value="suggest_route">
+          <input type="hidden" name="transport_type" value="Jeepney">
+          
+          <label for="suggest_origin">Route Origin</label>
+          <input type="text" name="origin" id="suggest_origin" 
+                 placeholder="e.g., SM City Cebu" 
+                 class="form-control" required>
+          
+          <label for="suggest_destination">Route Destination</label>
+          <input type="text" name="destination" id="suggest_destination" 
+                 placeholder="e.g., Ayala Center" 
+                 class="form-control" required>
+          
+          <label for="suggest_code">Jeepney Code</label>
+          <select name="code" id="suggest_code" class="form-control" required>
+            <option value="">Select jeepney code</option>
+            {% for code_value, code_label in suggestion_form.code.field.choices %}
+              <option value="{{ code_value }}">{{ code_label }}</option>
+            {% endfor %}
+          </select>
+          
+          <label for="suggest_notes">Route Details (Optional)</label>
+          <textarea name="notes" id="suggest_notes" 
+                    placeholder="Additional info about this route..." 
+                    rows="3" class="form-control"></textarea>
+          
+          <button type="submit" class="btn primary">
+            <i class="fa-solid fa-paper-plane"></i> Submit Suggestion
+          </button>
+        </form>
+      {% else %}
+        <div class="guest-restriction-notice">
+          <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+            You must have an account to suggest a route.
+          </p>
+          <button type="button" class="btn primary" disabled title="Unavailable in Guest Mode">
+            <i class="fa-solid fa-paper-plane"></i> Submit Suggestion
+          </button>
+        </div>
+      {% endif %}
     </aside>
 
   </div>

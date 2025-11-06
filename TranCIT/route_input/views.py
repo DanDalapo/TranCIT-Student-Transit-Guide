@@ -1,10 +1,12 @@
+# --- START OF FILE: route_input/views.py ---
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.cache import cache
 from django.conf import settings
 from django.db import DatabaseError
 from django.db.models import Q
 from django.views.decorators.http import require_POST, require_GET
-from django.contrib.auth.decorators import login_required
+# The 'login_required' import is removed from here
 from django.contrib.auth import logout
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.utils import timezone
@@ -16,6 +18,10 @@ import openrouteservice
 import json
 import logging
 import folium
+
+# --- 1. ADD THIS IMPORT ---
+from django.urls import reverse
+# --- END 1. ---
 
 from .forms import RouteForm, JeepneySuggestionForm
 from .models import Route, SavedRoute, JEEPNEY_CODE_CHOICES
@@ -225,8 +231,9 @@ def get_route_and_calculate(start_lat, start_lon, end_lat, end_lon, transport_ty
     try:
         feature = route_data['features'][0]
         props = feature.get('properties', {})
-        distance_m = props.get('summary', {}).get('distance', 0)
-        duration_s = props.get('summary', {}).get('duration', 0)
+        summary = props.get('summary', {})
+        distance_m = summary.get('distance', 0)
+        duration_s = summary.get('duration', 0)
         distance_km = Decimal(str(distance_m / 1000))
         travel_time_minutes = Decimal(str(duration_s / 60))
         return distance_km, travel_time_minutes, route_data
@@ -248,7 +255,7 @@ def store_route_path(route_instance, route_geojson):
         logger.exception("Failed storing route path")
 
 
-@login_required(login_url='/')
+# The @login_required decorator has been removed from this function
 def index(request):
     """Main dashboard view. Builds the folium map and handles route calculation for display."""
     error_message = None
@@ -335,11 +342,11 @@ def index(request):
         except Exception as e:
             logger.error(f"Error drawing route on map: {e}")
 
-    # Draw suggested routes on the map
-    for route in suggested_qs[:100]:
-        path_coords = route.get_path_coords()
-        if path_coords:
-            folium.PolyLine(path_coords, color='purple', weight=3, opacity=0.7, popup=f"{route.transport_type} {route.code or ''}").add_to(m)
+    # # Draw suggested routes on the map
+    # for route in suggested_qs[:100]:
+    #     path_coords = route.get_path_coords()
+    #     if path_coords:
+    #         folium.PolyLine(path_coords, color='purple', weight=3, opacity=0.7, popup=f"{route.transport_type} {route.code or ''}").add_to(m)
 
     folium.LayerControl().add_to(m)
     
@@ -439,6 +446,22 @@ initFoliumMap();
     return render(request, 'route_input/index.html', context)
 
 
+def _get_coords_from_request_data(address_text):
+    """Helper to geocode text from POST data, with fallback."""
+    if not address_text:
+        return None, None, "Address text was empty."
+    
+    # Try geocoding the full text
+    geo_result = cached_geocode(address_text)
+    if geo_result:
+        # cached_geocode returns a tuple (lat, lon, address)
+        return geo_result[0], geo_result[1], None
+    
+    # Fallback/Error
+    logger.warning("Could not geocode address during POST: %s", address_text)
+    return None, None, f"Could not find coordinates for: {address_text}. Please pin it on the map."
+
+
 @require_POST
 def plan_route(request):
     """Endpoint to handle route planning + saving. Expects CSRF token if called from JS."""
@@ -505,24 +528,98 @@ def plan_route(request):
     else:
         route_instance.code = request.POST.get('code')
 
-    try:
-        route_instance.save()
-        logger.info("Saved route %s -> %s (id=%s)", route_instance.origin, route_instance.destination, route_instance.id)
-        return redirect(f"/?origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}")
-    except DatabaseError:
-        logger.exception("DB Error saving route")
-        return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Database error saving route.'})
+        # The route is now calculated and stored in 'route_instance' in memory.
+        # It should NOT save it to the database.
+        # Just redirect back to the index page with the calculated data in the URL.
+        # This way, the user can see the route on the map without saving it. This is only for planning route.
+        base_url = reverse('routes_page')
+        query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
+        return redirect(f"{base_url}?{query_params}")
+
+    # try:
+    #     # --- MODIFICATION START ---
+    #     # Only save the route to the main DB if the user is authenticated.
+    #     if request.user.is_authenticated:
+    #         route_instance.save()
+    #         logger.info("User %s saved route %s -> %s (id=%s)", request.user.username, route_instance.origin, route_instance.destination, route_instance.id)
+    #     else:
+    #         logger.info("Guest planned a temporary route %s -> %s", route_instance.origin, route_instance.destination)
+    #     # --- MODIFICATION END ---
+            
+    #     # This part runs for everyone (guests and users)
+    #     base_url = reverse('routes_page')
+    #     query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
+    #     return redirect(f"{base_url}?{query_params}")
+
+    # except DatabaseError:
+    #     logger.exception("DB Error saving route")
+    #     return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Database error saving route.'})
 
 
+# --- THIS IS THE CORRECTED FUNCTION ---
 @require_POST
 def suggest_route(request):
     form = JeepneySuggestionForm(request.POST)
-    if form.is_valid():
-        form.save()
+    if not form.is_valid():
+        # If form is invalid, we can't just render the simple page.
+        # We must redirect back with an error flag, or (better)
+        # just log the error and redirect. For simplicity, we'll redirect.
+        # A full solution would use Django messages framework.
+        logger.warning(f"Invalid suggest_route form submission: {form.errors}")
+        return redirect('routes_page') # Redirect back
+
+    # --- START NEW LOGIC ---
+    route_instance = form.save(commit=False)
+    
+    # Manually set transport_type since it's not in the suggestion form
+    route_instance.transport_type = 'Jeepney'
+
+    # Geocode Origin
+    origin_lat, origin_lon, err = _get_coords_from_request_data(route_instance.origin)
+    if err:
+        # We can't geocode the origin. We should stop here.
+        # In a full app, you'd send an error message. For now, we'll log and redirect.
+        logger.warning(f"Could not geocode suggested origin: {route_instance.origin}")
         return redirect('routes_page')
-    return render(request, 'route_input/index.html', {'suggestion_form': form, 'error_message': 'Please complete all required fields.'})
+    route_instance.origin_latitude = origin_lat
+    route_instance.origin_longitude = origin_lon
+
+    # Geocode Destination
+    dest_lat, dest_lon, err = _get_coords_from_request_data(route_instance.destination)
+    if err:
+        logger.warning(f"Could not geocode suggested destination: {route_instance.destination}")
+        return redirect('routes_page')
+    route_instance.destination_latitude = dest_lat
+    route_instance.destination_longitude = dest_lon
+
+    # Get route path and other details from ORS
+    distance_km, travel_minutes, route_geojson = get_route_and_calculate(
+        route_instance.origin_latitude, route_instance.origin_longitude,
+        route_instance.destination_latitude, route_instance.destination_longitude,
+        route_instance.transport_type
+    )
+    
+    # Save the calculated details
+    if distance_km is not None:
+        route_instance.distance_km = distance_km
+        route_instance.travel_time_minutes = travel_minutes
+        route_instance.fare = calculate_fare(route_instance.transport_type, distance_km, travel_minutes)
+        
+    if route_geojson:
+        store_route_path(route_instance, route_geojson)
+    
+    # Now, save the complete object to the database
+    try:
+        route_instance.save()
+        logger.info(f"New suggested route saved: {route_instance.code} from {route_instance.origin} to {route_instance.destination}")
+    except DatabaseError as e:
+        logger.error(f"Database error saving suggested route: {e}")
+        # We would handle this error more gracefully in a full app
+    
+    return redirect('routes_page')
 
 
+# --- THIS IS THE FIXED FUNCTION ---
 @require_POST
 def save_current_route(request):
     origin = request.POST.get('origin')
@@ -532,23 +629,48 @@ def save_current_route(request):
     fare_val = request.POST.get('fare')
     notes = request.POST.get('notes')
 
+    # --- (1) ADD THIS BLOCK TO RE-CALCULATE THE ROUTE ---
+    # Recalculate the route to get path data
+    _, _, route_geojson = get_route_and_calculate(
+        _parse_decimal(request.POST.get('origin_latitude')),
+        _parse_decimal(request.POST.get('origin_longitude')),
+        _parse_decimal(request.POST.get('destination_latitude')),
+        _parse_decimal(request.POST.get('destination_longitude')),
+        transport_type
+    )
+    # --- END OF NEW BLOCK ---
+
+    # Try to find a matching base route, but it's okay if it's not found
     route = Route.objects.filter(Q(origin=origin) & Q(destination=destination) & Q(transport_type=transport_type) & Q(code=code)).first()
+    
     saved = SavedRoute.objects.create(
         user=request.user if request.user.is_authenticated else None,
         session_key=request.session.session_key or _get_session_key(request),
         original_route=route,
         origin=origin,
         destination=destination,
-        origin_latitude=route.origin_latitude if route else None,
-        origin_longitude=route.origin_longitude if route else None,
-        destination_latitude=route.destination_latitude if route else None,
-        destination_longitude=route.destination_longitude if route else None,
+        
+        origin_latitude=_parse_decimal(request.POST.get('origin_latitude')),
+        origin_longitude=_parse_decimal(request.POST.get('origin_longitude')),
+        destination_latitude=_parse_decimal(request.POST.get('destination_latitude')),
+        destination_longitude=_parse_decimal(request.POST.get('destination_longitude')),
+
         transport_type=transport_type,
         code=code,
-        fare=fare_val or 0,
+        fare=_parse_decimal(fare_val or 0),
         notes=notes or ""
+        # We do NOT add route_path_coords here
     )
+
+    # --- (2) ADD THIS BLOCK TO STORE THE PATH ---
+    # Now store the path on the new 'saved' instance we just created
+    if route_geojson:
+        store_route_path(saved, route_geojson) # This function works on SavedRoute objects too
+        saved.save() # Commit the change to the database
+    # --- END OF NEW BLOCK ---
+
     return JsonResponse({"message": "Route saved successfully!", "id": saved.id})
+
 
 
 @require_POST
@@ -571,7 +693,8 @@ def save_suggested_route(request):
         transport_type=route.transport_type,
         code=route.code,
         fare=route.fare or 0,
-        notes=route.notes or ""
+        notes=route.notes or "",
+        route_path_coords=route.route_path_coords # Copy the path data
     )
     return JsonResponse({"message": "Suggested route saved!", "id": saved.id})
 
@@ -627,3 +750,5 @@ def _get_session_key(request):
 def logout_view(request):
     logout(request)
     return redirect('/')
+
+# --- END OF FILE: route_input/views.py ---

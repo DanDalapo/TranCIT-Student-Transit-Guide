@@ -83,6 +83,7 @@ body {
 
 .topNav .logout-container {
   margin-left: auto;
+  padding-right: 10px; /* Added padding for spacing */
 }
 
 .topNav .logout-btn {
@@ -397,18 +398,25 @@ body {
   cursor: not-allowed;
 }
 
-.btn-icon {
-  padding: 6px 8px;
-  background: transparent;
-  border: none;
+/* .btn-icon {
+  flex: 1; 
+  padding: 8px;
+  background: #f0f0f0; 
+  border-radius: 4px;
   cursor: pointer;
-  color: #666;
-  transition: color 0.2s;
+  color: #333; 
+  transition: all 0.2s;
+  font-size: 13px;
+  display: flex; 
+  align-items: center;
+  justify-content: center;
+  gap: 5px; 
 }
 
 .btn-icon:hover {
-  color: #333;
-}
+  background: #e0e0e0; 
+  color: #000;
+} */
 
 /* === DESTINATION AUTOCOMPLETE === */
 .destination-input-group {
@@ -551,8 +559,8 @@ body {
 
 .saved-route-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column; 
+  align-items: stretch; 
   padding: 10px;
   margin-bottom: 8px;
   background: white;
@@ -571,7 +579,8 @@ body {
 
 .saved-route-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 10px; 
 }
 
 /* === FARE DISPLAY === */
@@ -786,4 +795,32 @@ hr {
 
 .flex-1 {
   flex: 1;
+}
+
+/* --- ADD THIS FOR GUEST MODE --- */
+
+/* Style for grayed-out buttons */
+.btn[disabled] {
+    background-color: #cccccc !important;
+    color: #666666 !important;
+    cursor: not-allowed !important;
+    border-color: #999999 !important;
+}
+
+/* Style for the guest exit button in the top nav */
+.guest-exit-btn {
+    display: block;
+    margin: 0 10px;
+    padding: 8px 16px;
+    background-color: #6c757d; /* A neutral gray color */
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.guest-exit-btn:hover {
+    background-color: #5a6268;
 }
