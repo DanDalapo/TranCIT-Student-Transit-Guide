@@ -10,24 +10,32 @@
 <body>
 
   <div class="topNav">
-    <ul>
-      <li>
-        <a href="#logo_place_holder" class="active">
-          <img src="{% static 'route_input/images/TranCIT_logo.svg' %}" alt="TranCIT Logo" style="width: 34px; height: 34px; object-fit: contain;">
-        </a>
-      </li>
+    <a href="{% url 'routes_page' %}" class="logo">🚍 TranCIT</a>
+    
+    <div class="search-box">
       <input type="text" placeholder="Search..">
-      <li class="logout-container">
-        {% if user.is_authenticated %}
-          <a href="{% url 'logout' %}" class="logout-btn">
-            Log out
-          </a>
-        {% else %}
-          <a href="{% url 'login_registration:login' %}" class="guest-exit-btn">
-            Exit Guest
-          </a>
-        {% endif %}
-      </li>
+    </div>
+    
+    <div class="nav-actions">
+      
+      <a href="{% url 'toggle_newbie_mode' %}" class="nav-btn" 
+         style="background-color: #ffc107; color: #333;">
+        Newbie Mode
+      </a>
+      
+      {% if user.is_authenticated %}
+        <a href="{% url 'logout' %}" class="nav-btn" 
+           style="background-color: #dc3545;">
+          Log out
+        </a>
+      {% else %}
+        <a href="{% url 'login_registration:login' %}" class="nav-btn" 
+           style="background-color: #6c757d;">
+          Exit Guest
+        </a>
+      {% endif %}
+      
+    </div>
   </div>
 
   <div class="container">
@@ -45,13 +53,13 @@
                {% if form.origin.field.required %}required{% endif %}
                class="form-control">
 
-        <div class="pin-controls" style="margin-top: 10px;">
+        <div class="pin-controls" style="margin-top: 5px;">
           <button type="button" id="pinOriginBtn" class="btn btn-sm">
             <i class="fa-solid fa-map-pin"></i> Pin Origin on Map
           </button>
-          <button type="button" id="pinDestinationBtn" class="btn btn-sm">
+          <!-- <button type="button" id="pinDestinationBtn" class="btn btn-sm">
             <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
-          </button>
+          </button> -->
         </div>
 
         <div class="divider">──────────  or  ──────────</div>
@@ -70,6 +78,9 @@
                  value="{{ get_destination_text|default_if_none:form.destination.value }}"
                  {% if form.destination.field.required %}required{% endif %}
                  class="form-control">
+          <button type="button" id="pinDestinationBtn" class="btn btn-sm">
+            <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
+          </button>
           <div id="destinationSuggestions" class="destination-suggestions" style="display: none;"></div>
         </div>
         <span class="error" id="error-destination">
