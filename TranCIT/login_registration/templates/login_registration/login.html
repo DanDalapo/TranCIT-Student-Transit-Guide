@@ -10,150 +10,102 @@
 <body>
     
     <div class="auth-wrapper {% if show_register %}register-active{% endif %}" id="authWrapper">
-         <div class="forms-slider">
-            <div class="form-panel">
-                <div class="form-content">
-                    <div class="form-logo">
-                        <h1>TranCIT</h1>
-                        <p>Welcome Back!</p>
+
+        <div class="form-panel login-panel">
+            <div class="form-content">
+                <div class="form-logo">
+                    <h1>TranCIT</h1>
+                    <p>Welcome Back!</p>
+                </div>
+                {% if messages and not show_register %}
+                <div class="form-messages">
+                    {% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}
+                </div>
+                {% endif %}
+                <form method="post" action="{% url 'login_registration:login' %}" novalidate>
+                    {% csrf_token %}
+                    <div class="input-group">
+                        <label for="loginUsername">Username</label>
+                        <input type="text" id="loginUsername" name="username" autocomplete="username" required>
                     </div>
-
-           
-                    {% if messages and not show_register %}
-                    <div class="form-messages">
-                        {% for message in messages %}
-                        <div class="message {{ message.tags }}">
-                            {{ message }}
-                        </div>
-                        {% endfor %}
+                    <div class="input-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
                     </div>
-                    {% endif %}
-
-                    <form method="post" action="{% url 'login_registration:login' %}" novalidate>
-                        {% csrf_token %}
-                        
-                        <div class="input-group">
-                            <label for="loginUsername">Username</label>
-                            <input 
-                                type="text" 
-                                id="loginUsername" 
-                                name="username" 
-                                autocomplete="username"
-                                required>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="loginPassword">Password</label>
-                            <input 
-                                type="password" 
-                                id="loginPassword" 
-                                name="password" 
-                                autocomplete="current-password"
-                                required>
-                        </div>
-
-                        <button type="submit" class="submit-btn">Login</button>
-                    </form>
+                    <button type="submit" class="submit-btn">Login</button>
+                </form>
+                <div class="mobile-toggle-container">
+                    <p>Don't have an account? <a href="#" class="mobile-toggle-btn" id="mobileShowRegister">Sign Up</a></p>
+                </div>
+                <div class="mobile-guest-link">
+                    <a href="{% url 'routes_page' %}">Continue as Guest</a>
                 </div>
             </div>
-
-            <div class="form-panel">
-                <div class="form-content">
-                    <div class="form-logo">
-                        <h1>TranCIT</h1>
-                        <p>Create Your Account</p>
-                    </div>
-
-                    
-                    {% if messages and show_register %}
-                    <div class="form-messages">
-                        {% for message in messages %}
-                        <div class="message {{ message.tags }}">
-                            {{ message }}
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-
-                    <form method="post" action="{% url 'login_registration:register' %}" novalidate>
-                        {% csrf_token %}
-                        
-                        <div class="input-group">
-                            <label for="registerUsername">Username</label>
-                            <input 
-                                type="text" 
-                                id="registerUsername" 
-                                name="username" 
-                                autocomplete="username"
-                                required>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="registerEmail">Email</label>
-                            <input 
-                                type="email" 
-                                id="registerEmail" 
-                                name="email" 
-                                autocomplete="email"
-                                required>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="registerPassword">Password</label>
-                            <input 
-                                type="password" 
-                                id="registerPassword" 
-                                name="password" 
-                                autocomplete="new-password"
-                                required minlength="8">
-                            <span class="input-hint">Must be at least 8 characters</span>
-                        </div>
-
-                        <div class="input-group">
-                            <label for="registerPasswordConfirm">Confirm Password</label>
-                            <input 
-                                type="password" 
-                                id="registerPasswordConfirm" 
-                                name="password_confirm" 
-                                autocomplete="new-password"
-                                required>
-                        </div>
-
-                        <button type="submit" class="submit-btn">Create Account</button>
-                    </form>
-                </div>
-            </div>
-
         </div>
+
+        <div class="form-panel register-panel">
+            <div class="form-content">
+                <div class="form-logo">
+                    <h1>TranCIT</h1>
+                    <p>Create Your Account</p>
+                </div>
+                {% if messages and show_register %}
+                <div class="form-messages">
+                    {% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}
+                </div>
+                {% endif %}
+                <form method="post" action="{% url 'login_registration:register' %}" novalidate>
+                    {% csrf_token %}
+                    <div class="input-group">
+                        <label for="registerUsername">Username</label>
+                        <input type="text" id="registerUsername" name="username" autocomplete="username" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="registerEmail">Email</label>
+                        <input type="email" id="registerEmail" name="email" autocomplete="email" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="registerPassword">Password</label>
+                        <input type="password" id="registerPassword" name="password" autocomplete="new-password" required minlength="8">
+                        <span class="input-hint">Must be at least 8 characters</span>
+                    </div>
+                    <div class="input-group">
+                        <label for="registerPasswordConfirm">Confirm Password</label>
+                        <input type="password" id="registerPasswordConfirm" name="password_confirm" autocomplete="new-password" required>
+                    </div>
+                    <button type="submit" class="submit-btn">Create Account</button>
+                </form>
+                <div class="mobile-toggle-container">
+                    <p>Already have an account? <a href="#" class="mobile-toggle-btn" id="mobileShowLogin">Login</a></p>
+                </div>
+                <div class="mobile-guest-link">
+                    <a href="{% url 'routes_page' %}">Continue as Guest</a>
+                </div>
+            </div>
+        </div>
+
 
         <div class="overlay-wrapper">
             <div class="overlay-slider">
                 <div class="overlay-panel">
                     <h2>Welcome!</h2>
                     <p>Please enter the needed information</p>
-                    <div class="divider">──────────────  or  ──────────────</div>
+                    <div class="divider">────────  or  ────────</div>
                     <p>Have an account already?</p>
                     <button type="button" class="overlay-btn" id="showLogin">Login</button>
                 </div>
-
                 <div class="overlay-panel">
                     <h2>Hello!</h2>
                     <p>Enter your personal details and start your journey with us</p>
-                    <div class="divider">──────────────  or  ──────────────</div>
+                    <div class="divider">────────  or  ────────</div>
                     <p>Don't have an account? Sign up now for free!</p>
                     <button type="button" class="overlay-btn" id="showRegister">Sign Up</button>
-                    
-                    <!-- START: ADDED CODE -->
-                    <div class="divider" style="margin-top: 20px;">──────────  or  ──────────</div>
-
-                    <a href="{% url 'routes_page' %}" class="overlay-btn guest-btn">
-                      Continue as Guest
-                    </a>
-                    <!-- END: ADDED CODE -->
-
+                    <div class="divider" style="margin-top: 20px;">────────  or  ────────</div>
+                    <a href="{% url 'routes_page' %}" class="overlay-btn guest-btn">Continue as Guest</a>
                 </div>
             </div>
         </div>
+
     </div>
 
     <script src="{% static 'login_registration/js/animation.js' %}"></script>

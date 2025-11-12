@@ -1,86 +1,66 @@
 document.addEventListener('DOMContentLoaded', function() {
     const authWrapper = document.getElementById('authWrapper');
+    
+    // Buttons that trigger the animation
     const showRegisterBtn = document.getElementById('showRegister');
     const showLoginBtn = document.getElementById('showLogin');
-    
-    // Function to clear messages and reset form inputs for the opposite form
+    const mobileShowRegisterBtn = document.getElementById('mobileShowRegister');
+    const mobileShowLoginBtn = document.getElementById('mobileShowLogin');
+
+    // Function to clear messages and reset form inputs
     function clearOppositeForm(isGoingToRegister) {
+        let formToClear, messagesToClear;
         if (isGoingToRegister) {
-            // Going to register, clear login form
-            const loginForm = document.querySelector('.form-panel:first-child form');
-            const loginMessages = document.querySelector('.form-panel:first-child .form-messages');
-            if (loginForm) loginForm.reset();
-            if (loginMessages) loginMessages.innerHTML = '';
+            formToClear = document.querySelector('.login-panel form');
+            messagesToClear = document.querySelector('.login-panel .form-messages');
         } else {
-            // Going to login, clear register form
-            const registerForm = document.querySelector('.form-panel:nth-child(2) form');
-            const registerMessages = document.querySelector('.form-panel:nth-child(2) .form-messages');
-            if (registerForm) registerForm.reset();
-            if (registerMessages) registerMessages.innerHTML = '';
+            formToClear = document.querySelector('.register-panel form');
+            messagesToClear = document.querySelector('.register-panel .form-messages');
         }
+        if (formToClear) formToClear.reset();
+        if (messagesToClear) messagesToClear.innerHTML = '';
         
-        // Reset all input borders
-        const inputs = document.querySelectorAll('input');
+        const inputs = document.querySelectorAll('input[required]');
         inputs.forEach(input => {
             input.style.borderColor = '#ddd';
         });
     }
+
+    // --- Event Listeners ---
+    const addActive = () => {
+        clearOppositeForm(true);
+        authWrapper.classList.add('register-active');
+    };
     
-    if (showRegisterBtn) {
-        showRegisterBtn.addEventListener('click', function() {
-            clearOppositeForm(true); // true = going to register
-            authWrapper.classList.add('register-active');
-        });
-    }
-    
-    if (showLoginBtn) {
-        showLoginBtn.addEventListener('click', function() {
-            clearOppositeForm(false); // false = going to login
-            authWrapper.classList.remove('register-active');
-        });
-    }
-    
-    const forms = document.querySelectorAll('form');
-    
-    forms.forEach(function(form) {
-        form.addEventListener('submit', function(e) {
-            const inputs = form.querySelectorAll('input[required]');
-            let isValid = true;
-            
-            inputs.forEach(function(input) {
-                if (!input.value.trim()) {
-                    isValid = false;
-                    input.style.borderColor = '#dc3545';
-                } else {
-                    input.style.borderColor = '#ddd';
-                }
-            });
-            
-        
-            if (!isValid) {
-                e.preventDefault();
-            }
-        });
+    const removeActive = () => {
+        clearOppositeForm(false);
+        authWrapper.classList.remove('register-active');
+    };
+
+    if (showRegisterBtn) showRegisterBtn.addEventListener('click', addActive);
+    if (mobileShowRegisterBtn) mobileShowRegisterBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        addActive();
     });
     
-    const inputs = document.querySelectorAll('input');
-    
+    if (showLoginBtn) showLoginBtn.addEventListener('click', removeActive);
+    if (mobileShowLoginBtn) mobileShowLoginBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        removeActive();
+    });
+
+    // --- Form Validation Styling ---
+    const inputs = document.querySelectorAll('input[required]');
     inputs.forEach(function(input) {
-        input.addEventListener('input', function() {
-            this.style.borderColor = '#ddd';
-        });
-        
         input.addEventListener('focus', function() {
             this.style.borderColor = '#4CAF50';
         });
-        
         input.addEventListener('blur', function() {
-            if (this.hasAttribute('required') && !this.value.trim()) {
+            if (!this.value.trim()) {
                 this.style.borderColor = '#dc3545';
             } else {
                 this.style.borderColor = '#ddd';
             }
         });
     });
-    
 });

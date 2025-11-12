@@ -475,23 +475,35 @@ def plan_route(request):
     post_dest_lat = request.POST.get('destination_latitude')
     post_dest_lon = request.POST.get('destination_longitude')
 
+    # --- FIX 1: Handle Origin Geocoding ---
     if post_origin_lat and post_origin_lon:
         route_instance.origin_latitude = _parse_decimal(post_origin_lat)
         route_instance.origin_longitude = _parse_decimal(post_origin_lon)
     else:
-        lat, lon, err = _get_coords_from_request_data(route_instance.origin)
-        if err: return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
-        route_instance.origin_latitude = lat
-        route_instance.origin_longitude = lon
+        location_data = cached_geocode(route_instance.origin)
+        if location_data:
+            route_instance.origin_latitude = Decimal(str(location_data[0]))
+            route_instance.origin_longitude = Decimal(str(location_data[1]))
+        else:
+            return render(request, 'route_input/index.html', {
+                'form': form, 
+                'error_message': f'Could not find coordinates for origin: {route_instance.origin}'
+            })
 
+    # --- FIX 2: Handle Destination Geocoding (This was missing!) ---
     if post_dest_lat and post_dest_lon:
         route_instance.destination_latitude = _parse_decimal(post_dest_lat)
         route_instance.destination_longitude = _parse_decimal(post_dest_lon)
     else:
-        lat, lon, err = _get_coords_from_request_data(route_instance.destination)
-        if err: return render(request, 'route_input/index.html', {'form': form, 'error_message': err})
-        route_instance.destination_latitude = lat
-        route_instance.destination_longitude = lon
+        location_data = cached_geocode(route_instance.destination)
+        if location_data:
+            route_instance.destination_latitude = Decimal(str(location_data[0]))
+            route_instance.destination_longitude = Decimal(str(location_data[1]))
+        else:
+            return render(request, 'route_input/index.html', {
+                'form': form, 
+                'error_message': f'Could not find coordinates for destination: {route_instance.destination}'
+            })
 
     if all([route_instance.origin_latitude, route_instance.destination_latitude]):
         distance_km, travel_minutes, route_geojson = get_route_and_calculate(
@@ -504,7 +516,7 @@ def plan_route(request):
             route_instance.travel_time_minutes = travel_minutes
             route_instance.fare = calculate_fare(route_instance.transport_type, distance_km, travel_minutes)
             store_route_path(route_instance, route_geojson)
-        else: # Fallback
+        else:
             d_km, t_min = calculate_distance_and_time(route_instance.origin_latitude, route_instance.origin_longitude, route_instance.destination_latitude, route_instance.destination_longitude)
             route_instance.distance_km = d_km
             route_instance.travel_time_minutes = t_min
