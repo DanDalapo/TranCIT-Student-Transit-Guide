@@ -6,7 +6,7 @@ from django.conf import settings
 from django.db import DatabaseError
 from django.db.models import Q
 from django.views.decorators.http import require_POST, require_GET
-# The 'login_required' import is removed from here
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth import logout
 from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.utils import timezone
@@ -415,14 +415,10 @@ initFoliumMap();
     map_html = m._repr_html_()
 
     # Get saved routes for the user or session
+    # Get saved routes for the user or session
+    saved_routes = [] # Default to an empty list for guests
     if request.user.is_authenticated:
         saved_routes = SavedRoute.objects.filter(user=request.user)
-    else:
-        sk = request.session.session_key
-        if not sk:
-            request.session.create()
-            sk = request.session.session_key
-        saved_routes = SavedRoute.objects.filter(session_key=sk)
 
     context = {
         'form': form,
@@ -443,7 +439,10 @@ initFoliumMap();
         'calculated_time': calculated_time,
     }
 
-    return render(request, 'route_input/index.html', context)
+    if request.session.get('newbie_mode', False):
+        return render(request, 'route_input/newbie_index.html', context)
+    else:
+        return render(request, 'route_input/index.html', context)
 
 
 def _get_coords_from_request_data(address_text):
@@ -524,28 +523,9 @@ def plan_route(request):
         query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
         return redirect(f"{base_url}?{query_params}")
 
-    # try:
-    #     # --- MODIFICATION START ---
-    #     # Only save the route to the main DB if the user is authenticated.
-    #     if request.user.is_authenticated:
-    #         route_instance.save()
-    #         logger.info("User %s saved route %s -> %s (id=%s)", request.user.username, route_instance.origin, route_instance.destination, route_instance.id)
-    #     else:
-    #         logger.info("Guest planned a temporary route %s -> %s", route_instance.origin, route_instance.destination)
-    #     # --- MODIFICATION END ---
-            
-    #     # This part runs for everyone (guests and users)
-    #     base_url = reverse('routes_page')
-    #     query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
-    #     return redirect(f"{base_url}?{query_params}")
-
-    # except DatabaseError:
-    #     logger.exception("DB Error saving route")
-    #     return render(request, 'route_input/index.html', {'form': form, 'error_message': 'Database error saving route.'})
-
-
 # --- THIS IS THE CORRECTED FUNCTION ---
 @require_POST
+@login_required
 def suggest_route(request):
     form = JeepneySuggestionForm(request.POST)
     if not form.is_valid():
@@ -609,6 +589,7 @@ def suggest_route(request):
 
 # --- THIS IS THE FIXED FUNCTION ---
 @require_POST
+@login_required
 def save_current_route(request):
     origin = request.POST.get('origin')
     destination = request.POST.get('destination')
@@ -662,6 +643,7 @@ def save_current_route(request):
 
 
 @require_POST
+@login_required
 def save_suggested_route(request):
     route_id = request.POST.get('route_id')
     if not route_id: return JsonResponse({'error': 'route_id required'}, status=400)
@@ -688,6 +670,7 @@ def save_suggested_route(request):
 
 
 @require_POST
+@login_required
 def delete_saved_route(request):
     saved_id = request.POST.get('saved_id')
     if not saved_id: return JsonResponse({'success': False, 'error': 'saved_id required.'}, status=400)
@@ -738,5 +721,11 @@ def _get_session_key(request):
 def logout_view(request):
     logout(request)
     return redirect('/')
+
+def toggle_newbie_mode(request):
+    current_state = request.session.get('newbie_mode', False) 
+    request.session['newbie_mode'] = not current_state
+    
+    return redirect('routes_page')
 
 # --- END OF FILE: route_input/views.py ---
