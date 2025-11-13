@@ -1,5 +1,3 @@
-# --- START OF FILE: route_input/views.py ---
-
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.cache import cache
 from django.conf import settings
@@ -21,7 +19,6 @@ import folium
 
 # --- 1. ADD THIS IMPORT ---
 from django.urls import reverse
-# --- END 1. ---
 
 from .forms import RouteForm, JeepneySuggestionForm
 from .models import Route, SavedRoute, JEEPNEY_CODE_CHOICES
@@ -309,7 +306,8 @@ def index(request):
     calculated_distance = None
     calculated_time = None
     
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=DEFAULT_MAP_ZOOM)
+    # --- MODIFIED: ADDED zoom_control=False ---
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=DEFAULT_MAP_ZOOM, zoom_control=False)
 
     if current_origin_lat and current_origin_lon:
         folium.Marker([float(current_origin_lat), float(current_origin_lon)], popup=get_origin_text or "Origin", icon=folium.Icon(color='blue', icon='circle', prefix='fa')).add_to(m)
@@ -347,11 +345,8 @@ def index(request):
     #     path_coords = route.get_path_coords()
     #     if path_coords:
     #         folium.PolyLine(path_coords, color='purple', weight=3, opacity=0.7, popup=f"{route.transport_type} {route.code or ''}").add_to(m)
-
-    folium.LayerControl().add_to(m)
     
     click_js = """
-// Runs inside the Folium iframe
 function initFoliumMap() {
   for (const key in window) {
     if (key.startsWith("map_") && window[key] instanceof L.Map) {
@@ -414,7 +409,6 @@ initFoliumMap();
     m.get_root().html.add_child(folium.Element(f"<script>{click_js}</script>"))
     map_html = m._repr_html_()
 
-    # Get saved routes for the user or session
     # Get saved routes for the user or session
     saved_routes = [] # Default to an empty list for guests
     if request.user.is_authenticated:
@@ -739,5 +733,3 @@ def toggle_newbie_mode(request):
     request.session['newbie_mode'] = not current_state
     
     return redirect('routes_page')
-
-# --- END OF FILE: route_input/views.py ---
