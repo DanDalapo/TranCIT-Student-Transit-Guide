@@ -32,13 +32,14 @@ JEEPNEY_CODE_CHOICES = [
         ('62B', '62B'),
     ]
 
-class Route(models.Model):
-    TRANSPORT_CHOICES = [
+TRANSPORT_CHOICES = [
         ('Jeepney', 'Jeepney'),
         ('Bus', 'Bus'),
         ('Taxi', 'Taxi'),
         ('Motorcycle', 'Motorcycle'),
-    ]
+]
+
+class Route(models.Model):
 
     # JEEPNEY_CODE_CHOICES = [
     #     ('01A', '01A'), ('01B', '01B'), ('01C', '01C'), ('01K', '01K'),
