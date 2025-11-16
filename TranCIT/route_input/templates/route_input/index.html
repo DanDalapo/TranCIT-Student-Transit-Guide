@@ -10,6 +10,20 @@
 </head>
 <body>
 
+  <!-- Tutorial Overlay -->
+  <div class="tutorial-overlay" id="tutorialOverlay">
+    <div class="tutorial-box">
+      <h2 id="tutorialTitle">Welcome to TranCIT!</h2>
+      <p id="tutorialText">Let's take a quick tour to help you get started.</p>
+      <div class="tutorial-steps" id="tutorialSteps"></div>
+      <div class="tutorial-actions">
+        <button class="skip-btn" id="skipTutorial">Skip Tutorial</button>
+        <button class="next-btn" id="nextTutorial">Next</button>
+      </div>
+      <div class="tutorial-indicator" id="tutorialIndicator"></div>
+    </div>
+  </div>
+
   <div class="topNav">
     <a href="{% url 'routes_page' %}" class="logo">🚍 TranCIT</a>
     
@@ -18,11 +32,9 @@
     </div>
     
     <div class="nav-actions">
-      <a href="{% url 'toggle_newbie_mode' %}" class="nav-btn" 
-         style="background-color: #ffc107; color: #333;">
-        Newbie Mode
-      </a>
-      
+
+      <button id="helpBtn" class="nav-btn">Help</button>
+
       {% if user.is_authenticated %}
         <a href="{% url 'logout' %}" class="nav-btn" 
            style="background-color: #dc3545;">
@@ -93,20 +105,57 @@
         </span>
 
         <div class="form-actions" style="margin-top: 10px;">
-          <button type="submit" class="btn primary" id="navigateBtn">
+          <button type="button" class="btn primary" id="navigateBtn">
             <i class="fa-solid fa-route"></i> Navigate Route
           </button>
+
+          <button type="button" class="btn" id="resetFormBtn" style="background-color: #6c757d; color: white;">
+            <i class="fa-solid fa-times"></i> Reset
+          </button> 
         </div>
 
-        <div id="fareDisplay">
-          <label>Estimated Fare:</label>
-          <p id="calculatedFare">
-            {% if calculated_fare is not None %}
-              Php {{ calculated_fare|floatformat:2 }}
-            {% else %}
-              Php 0.00
-            {% endif %}
-          </p>
+        
+
+        <div id="resultsDisplay">
+            <div class="result-item">
+                  <label>Transport</label>
+                  <p id="calculatedTransport">
+                      {% if calculated_distance %} {{ request.GET.transport_type }}
+                      {% else %}
+                          --
+                      {% endif %}
+                  </p>
+            </div>
+            <div class="result-item">
+                <label>Est. Fare</label>
+                <p id="calculatedFare">
+                    {% if calculated_fare is not None %}
+                        Php {{ calculated_fare|floatformat:2 }}
+                    {% else %}
+                        Php 0.00
+                    {% endif %}
+                </p>
+            </div>
+            <div class="result-item">
+                <label>Est. Time</label>
+                <p id="calculatedTime">
+                    {% if calculated_time is not None %}
+                        {{ calculated_time|floatformat:0 }} min
+                    {% else %}
+                        -- min
+                    {% endif %}
+                </p>
+            </div>
+            <div class="result-item">
+                <label>Distance</label>
+                <p id="calculatedDistance">
+                    {% if calculated_distance is not None %}
+                        {{ calculated_distance|floatformat:1 }} km
+                    {% else %}
+                        -- km
+                    {% endif %}
+                </p>
+            </div>
         </div>
 
         <input type="hidden" name="fare" id="id_fare" value="{{ calculated_fare|default:'0.00' }}">

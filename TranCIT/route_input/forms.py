@@ -1,9 +1,16 @@
 from django import forms
-from .models import JEEPNEY_CODE_CHOICES, Route
+from .models import JEEPNEY_CODE_CHOICES, TRANSPORT_CHOICES, Route
 
 # Left Panel: Used for planning routes and navigation
 class RouteForm(forms.ModelForm):
     code = forms.ChoiceField(choices=JEEPNEY_CODE_CHOICES, required=False)
+
+    transport_type = forms.ChoiceField(
+        choices=[('', 'Choose Transport Type')] + TRANSPORT_CHOICES, 
+        required=True,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    
     class Meta:
         model = Route
         fields = [

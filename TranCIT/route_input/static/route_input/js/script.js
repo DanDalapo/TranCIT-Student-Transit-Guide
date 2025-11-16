@@ -7,7 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const destinationInput = $('#id_destination');
     const suggestionsContainer = $('#destinationSuggestions');
     const transportSelect = $('#id_transport_type');
-    const fareDisplay = $('#calculatedFare');
+    const calculatedFareEl = $('#calculatedFare');
+    const calculatedTimeEl = $('#calculatedTime');
+    const calculatedDistanceEl = $('#calculatedDistance');
+    const calculatedTransportEl = $('#calculatedTransport');
     const fareInput = $('#id_fare');
     const distInput = $('#id_distance_km');
     const timeInput = $('#id_travel_time_minutes');
@@ -22,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pinOriginBtn = $('#pinOriginBtn');
     const pinDestinationBtn = $('#pinDestinationBtn');
     const navigateBtn = $('#navigateBtn');
+    const resetFormBtn = $('#resetFormBtn');
 
     const mapIframe = $('#map-container iframe');
     let foliumMap; 
@@ -168,11 +172,21 @@ document.addEventListener('DOMContentLoaded', () => {
     pinDestinationBtn?.addEventListener('click', () => sendPinCommand('destination'));
 
     navigateBtn?.addEventListener('click', () => {
+        // --- 1. Run all our checks first ---
+        if (!transportSelect.value) {
+            return alertMsg('Please choose a transport type.');
+        }
         if (!originLat.value && !destLat.value) return alertMsg('Please pin both your origin and destination.');
         if (!originLat.value) return alertMsg('Please pin your origin.');
         if (!destLat.value) return alertMsg('Please pin your destination.');
+        if (!getMapObjects()) return alertMsg('Map is not ready yet. Please wait.');
 
-        window.location.href = `/routes/?${qs({
+        // --- 2. Show a loading state ---
+        navigateBtn.disabled = true;
+        navigateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Calculating...';
+
+        // --- 3. Prepare the data to send ---
+        const routeData = {
             origin_latitude: originLat.value,
             origin_longitude: originLon.value,
             destination_latitude: destLat.value,
@@ -180,29 +194,87 @@ document.addEventListener('DOMContentLoaded', () => {
             origin_text: originInput.value,
             destination_text: destinationInput.value,
             transport_type: transportSelect.value
-        })}`;
+        };
+
+        // --- 4. Call our new view in the background ---
+        fetch('/routes/get_route_data/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify(routeData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // --- 5. Success! Update the UI ---
+
+            // Fill the hidden fields for the "Save" button
+            fareInput.value = data.fare.toFixed(2);
+            distInput.value = data.distance_km.toFixed(2);
+            timeInput.value = data.travel_time_minutes.toFixed(2);
+
+            // Update the visible results panel
+            calculatedFareEl.textContent = `Php ${data.fare.toFixed(2)}`;
+            calculatedTimeEl.textContent = `${data.travel_time_minutes.toFixed(0)} min`;
+            calculatedDistanceEl.textContent = `${data.distance_km.toFixed(1)} km`;
+            calculatedTransportEl.textContent = routeData.transport_type;
+
+            // Draw the route and pins on the map
+            drawNavigatedRoute(data.path_coords, routeData);
+
+            // Re-enable the "Navigate" button and "Save" button
+            navigateBtn.innerHTML = '<i class="fa-solid fa-route"></i> Navigate Route';
+            toggleNavigateButton(); // This will re-enable it
+            if (saveMyRouteBtn) {
+                saveMyRouteBtn.disabled = false;
+            }
+
+        })
+        .catch(error => {
+            console.error('Navigation error:', error);
+            alertMsg(`Error: Could not calculate route. ${error.message}`);
+            navigateBtn.innerHTML = '<i class="fa-solid fa-route"></i> Navigate Route';
+            toggleNavigateButton(); // Re-enable it on failure
+        });
     });
 
     function updateFare() {
         if (distInput && distInput.value && parseFloat(distInput.value) > 0) {
             return; 
         }
+        
+
         const type = transportSelect?.value;
         if (!type) return;
 
-        fareDisplay.textContent = 'Php 0.00';
+
+        calculatedFareEl.textContent = 'Php 0.00';
+        calculatedTimeEl.textContent = '-- min';
+        calculatedDistanceEl.textContent = '-- km';
+        calculatedTransportEl.textContent = '--';
         fareInput.value = '0.00';
         distInput.value = '';
         timeInput.value = '';
 
-        if (type === 'Jeepney') {
-            if (codeInput) codeInput.value = 'UNKNOWN';
-            fareInput.value = '13.00';
-            fareDisplay.textContent = 'Php ~13.00 (Fixed)';
+
+        if (!originInput.value.trim() || !destinationInput.value.trim()) {
             return;
         }
 
-        if (!['Taxi', 'Motorcycle'].includes(type)) return;
+        if (type === 'Jeepney') {
+            if (codeInput) codeInput.value = 'UNKNOWN';
+            fareInput.value = '13.00';
+            calculatedFareEl.textContent = 'Php ~13.00 (Fixed)';
+            calculatedTransportEl.textContent = 'Jeepney';
+            return;
+        }
+
+        if (!['Motorcycle'].includes(type)) return;
 
         const dist = 5 + Math.random() * 10;
         const time = dist * 3;
@@ -211,11 +283,14 @@ document.addEventListener('DOMContentLoaded', () => {
         distInput.value = dist.toFixed(2);
         timeInput.value = time.toFixed(2);
         fareInput.value = fare.toFixed(2);
-        fareDisplay.textContent = `Php ${fare.toFixed(2)}`;
+        
+        calculatedFareEl.textContent = `Php ${fare.toFixed(2)}`;
+        calculatedTimeEl.textContent = `${time.toFixed(0)} min`;
+        calculatedDistanceEl.textContent = `${dist.toFixed(1)} km`;
+        calculatedTransportEl.textContent = type;
     }
 
     ['change', 'input'].forEach(evt => {
-        transportSelect?.addEventListener(evt, updateFare);
         originInput?.addEventListener(evt, updateFare);
         destinationInput?.addEventListener(evt, updateFare);
     });
@@ -282,18 +357,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         destLon.value = item.lon;
                         suggestionsContainer.style.display = 'none';
                         toggleNavigateButton();
-
-                        const params = {
-                            destination_latitude: item.lat,
-                            destination_longitude: item.lon,
-                            destination_text: item.display_name
-                        };
-                        if (originLat.value && originLon.value) {
-                            params.origin_latitude = originLat.value;
-                            params.origin_longitude = originLon.value;
-                            params.origin_text = originInput.value;
+                        
+                        if (mapIframe && mapIframe.contentWindow) {
+                            mapIframe.contentWindow.postMessage({
+                                type: 'DRAW_PIN',
+                                mode: 'destination',
+                                lat: item.lat,
+                                lng: item.lon,
+                                label: item.display_name
+                            }, '*');
                         }
-                        window.location.href = `${window.location.pathname}?${qs(params)}`;
                     });
                     suggestionsContainer.appendChild(div);
                 });
@@ -409,6 +482,53 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+
+    function drawNavigatedRoute(pathCoords, routeData) {
+        if (!getMapObjects()) return;
+
+        const routeId = 'navigatedRoute'; // A special ID for this route
+
+        // Clear any previous navigated route
+        if (activeRouteLayers[routeId]) {
+            foliumMap.removeLayer(activeRouteLayers[routeId]);
+            delete activeRouteLayers[routeId];
+        }
+
+        try {
+            const originPopup = routeData.origin_text || "Origin";
+            const destPopup = routeData.destination_text || "Destination";
+
+            // 1. Create the Polyline
+            const polyline = L_Leaflet.polyline(pathCoords, {
+                color: '#2B86C3EE', // The blue color from your views.py
+                weight: 8,
+                opacity: 0.8
+            });
+
+            // 2. Create Markers
+            let originMarker, destMarker;
+            try {
+                const originIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'blue' });
+                const destIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'red' });
+                originMarker = L_Leaflet.marker([routeData.origin_latitude, routeData.origin_longitude], {icon: originIcon}).bindPopup(originPopup);
+                destMarker = L_Leaflet.marker([routeData.destination_latitude, routeData.destination_longitude], {icon: destIcon}).bindPopup(destPopup);
+            } catch (iconError) {
+                originMarker = L_Leaflet.marker([routeData.origin_latitude, routeData.origin_longitude]).bindPopup(originPopup);
+                destMarker = L_Leaflet.marker([routeData.destination_latitude, routeData.destination_longitude]).bindPopup(destPopup);
+            }
+
+            // 3. Create a FeatureGroup
+            const routeLayerGroup = L_Leaflet.featureGroup([polyline, originMarker, destMarker]);
+
+            routeLayerGroup.addTo(foliumMap);
+            foliumMap.fitBounds(routeLayerGroup.getBounds().pad(0.1));
+            activeRouteLayers[routeId] = routeLayerGroup;
+
+        } catch (err) {
+            console.error('Error drawing navigated route:', err);
+            alertMsg('Error: Could not display the route on the map.');
+        }
+    }       
     
     async function performSave(url, formData) {
         if (!csrftoken) return alert('Error: CSRF token not found.');
@@ -467,6 +587,141 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('An error occurred while trying to delete the route.');
         }
     }
+
+    const tutorialSteps = [
+      {
+        title: "Welcome to TranCIT! 🚍",
+        text: "TranCIT helps you navigate through Cebu City using public transportation. Let's show you around!",
+        steps: null,
+        highlight: null
+      },
+      {
+        title: "Plan Your Route",
+        text: "Start by entering your journey details in the left panel.",
+        steps: [
+          "Enter your starting location",
+          "Enter your destination",
+          "Choose your preferred transport",
+          "Click 'Find Route' to see your options"
+        ],
+        highlight: "sidebarPanel"
+      },
+      {
+        title: "Interactive Map",
+        text: "The center panel shows an interactive map of your route. You'll see:",
+        steps: [
+          "Your starting point and destination",
+          "Suggested routes highlighted",
+          "Transport stops along the way",
+          "Estimated travel time"
+        ],
+        highlight: "mapPanel"
+      },
+      {
+        title: "Helpful Suggestions",
+        text: "The right panel provides useful information:",
+        steps: [
+          "Browse community-submitted jeepney routes",
+          "Popular routes to common destinations",
+          "Share your own route suggestions",
+          "Save your favorite routes to your list"
+        ],
+        highlight: "suggestionsPanel"
+      },
+      {
+        title: "You're All Set! 🎉",
+        text: "You're ready to start using TranCIT. Click the Help button anytime to see this tutorial again.",
+        steps: null,
+        highlight: null
+      }
+    ];
+
+    let currentStep = 0;
+    const overlay = document.getElementById('tutorialOverlay');
+    const title = document.getElementById('tutorialTitle');
+    const text = document.getElementById('tutorialText');
+    const stepsContainer = document.getElementById('tutorialSteps');
+    const indicator = document.getElementById('tutorialIndicator');
+    const nextBtn = document.getElementById('nextTutorial');
+    const skipBtn = document.getElementById('skipTutorial');
+    const helpBtn = document.getElementById('helpBtn');
+
+    function showTutorialStep(step) {
+      const stepData = tutorialSteps[step];
+
+      // Remove previous highlights
+      document.querySelectorAll('.highlight-pulse').forEach(el => {
+        el.classList.remove('highlight-pulse');
+      });
+
+      // Update content
+      title.textContent = stepData.title;
+      text.textContent = stepData.text;
+
+      // Show steps if available
+      if (stepData.steps) {
+        stepsContainer.style.display = 'block';
+        stepsContainer.innerHTML = '<ol>' +
+          stepData.steps.map(s => `<li>${s}</li>`).join('') +
+          '</ol>';
+      } else {
+        stepsContainer.style.display = 'none';
+      }
+
+      // Highlight element
+      if (stepData.highlight) {
+        const element = document.getElementById(stepData.highlight);
+        if (element) {
+          element.classList.add('highlight-pulse');
+        }
+      }
+
+      // Update indicator
+      indicator.textContent = `Step ${step + 1} of ${tutorialSteps.length}`;
+
+      // Update button text
+      if (step === tutorialSteps.length - 1) {
+        nextBtn.textContent = 'Get Started';
+      } else {
+        nextBtn.textContent = 'Next';
+      }
+    }
+
+    function startTutorial() {
+      currentStep = 0;
+      overlay.classList.add('active');
+      showTutorialStep(currentStep);
+    }
+
+    function closeTutorial() {
+      overlay.classList.remove('active');
+      document.querySelectorAll('.highlight-pulse').forEach(el => {
+        el.classList.remove('highlight-pulse');
+      });
+      // Save that user has seen tutorial
+      localStorage.setItem('trancit_tutorial_seen', 'true');
+    }
+
+    nextBtn.addEventListener('click', () => {
+      if (currentStep < tutorialSteps.length - 1) {
+        currentStep++;
+        showTutorialStep(currentStep);
+      } else {
+        closeTutorial();
+      }
+    });
+
+    skipBtn.addEventListener('click', closeTutorial);
+
+    helpBtn.addEventListener('click', startTutorial);
+
+    // Show tutorial on first visit
+    window.addEventListener('load', () => {
+      const hasSeenTutorial = localStorage.getItem('trancit_tutorial_seen');
+      if (!hasSeenTutorial) {
+        setTimeout(startTutorial, 500);
+      }
+    });
 
     // MOBILE TAB SWITCHING LOGIC
     const tabPlan = $('#tabPlan');
@@ -536,4 +791,9 @@ document.addEventListener('DOMContentLoaded', () => {
             startY = null;
         });
     });
+
+    resetFormBtn?.addEventListener('click', () => {
+        window.location.href = '/routes/';
+    });
+
 });

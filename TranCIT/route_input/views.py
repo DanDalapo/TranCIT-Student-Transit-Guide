@@ -149,28 +149,29 @@ def calculate_fare(transport_type, distance_km, travel_time_minutes):
         fare = Decimal('0.00')
 
         if transport_type == 'Jeepney':
-            base = Decimal('13.00')
-            rate = Decimal('1.80')
+            base = Decimal('13.00') # 
+            rate = Decimal('1.80') # 
             if distance <= 4:
                 fare = base
             else:
                 fare = base + (distance - 4) * rate
         
         elif transport_type == 'Bus':
-            base = Decimal('15.00')
-            rate = Decimal('2.25')
+            base = Decimal('15.00') # 
+            rate = Decimal('1.80') # 
             if distance <= 4:
                 fare = base
             else:
                 fare = base + (distance - 4) * rate
 
         elif transport_type == 'Taxi':
-            base = Decimal('40.00')
-            rate_km = Decimal('13.50')
-            rate_waiting = Decimal('1.00') # ₱1 per minute
+            base = Decimal('50.00') # 
+            rate_km = Decimal('13.50') # 
+            rate_waiting = Decimal('2.00') # 
             fare = base + (distance * rate_km) + (waiting_time * rate_waiting)
 
         elif transport_type == 'Motorcycle':
+            # No official PDF provided, using existing logic from your code
             base = Decimal('20.00')
             if distance <= 1:
                 fare = base
@@ -370,6 +371,34 @@ function attachHandlers() {
       window.mapClickMode = data.mode;
       alert("Click on the map to set " + data.mode);
     }
+
+    if (data?.type === "DRAW_PIN") {
+        const { lat, lng, mode, label } = data;
+        if (!lat || !lng || !mode) return;
+
+        const markerKey = mode === "origin" ? "originMarker" : "destinationMarker";
+
+        // Remove existing marker of the same type
+        if (window[markerKey]) {
+            try { window.map.removeLayer(window[markerKey]); } catch {}
+        }
+        
+        // Add new marker at the specified coords
+        window[markerKey] = L.marker([lat, lng]).addTo(window.map)
+            .bindPopup(label || (mode + ": " + lat.toFixed(5) + ", " + lng.toFixed(5)))
+            .openPopup();
+        
+        window.mapClickMode = null; // Take map out of pinning mode
+    }
+
+    if (data?.type === "CLEAR_PINS") {
+        if (window["originMarker"]) {
+            try { window.map.removeLayer(window["originMarker"]); } catch {}
+        }
+        if (window["destinationMarker"]) {
+            try { window.map.removeLayer(window["destinationMarker"]); } catch {}
+        }
+    }
   });
 
   window.map.on("click", function(e) {
@@ -433,10 +462,8 @@ initFoliumMap();
         'calculated_time': calculated_time,
     }
 
-    if request.session.get('newbie_mode', False):
-        return render(request, 'route_input/newbie_index.html', context)
-    else:
-        return render(request, 'route_input/index.html', context)
+    return render(request, 'route_input/index.html', context)
+        
 
 
 def _get_coords_from_request_data(address_text):
@@ -516,15 +543,15 @@ def plan_route(request):
             route_instance.travel_time_minutes = t_min
             route_instance.fare = calculate_fare(route_instance.transport_type, d_km, t_min)
 
-    if route_instance.transport_type != 'Jeepney':
-        route_instance.code = None
-    else:
-        route_instance.code = request.POST.get('code')
+    # --- THIS IS THE FIXED CODE ---
+        if route_instance.transport_type != 'Jeepney':
+            route_instance.code = None
+        else:
+            route_instance.code = request.POST.get('code')
 
         # The route is now calculated and stored in 'route_instance' in memory.
-        # It should NOT save it to the database.
-        # Just redirect back to the index page with the calculated data in the URL.
-        # This way, the user can see the route on the map without saving it. This is only for planning route.
+        # ... (comments) ...
+        # This block is now UN-INDENTED and will run for ALL transport types
         base_url = reverse('routes_page')
         query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
         return redirect(f"{base_url}?{query_params}")
@@ -724,12 +751,50 @@ def _get_session_key(request):
     return request.session.session_key
 
 
+@require_POST
+def get_route_data(request):
+    try:
+        # Get data from the JavaScript fetch
+        data = json.loads(request.body)
+        origin_lat = _parse_decimal(data.get('origin_latitude'))
+        origin_lon = _parse_decimal(data.get('origin_longitude'))
+        dest_lat = _parse_decimal(data.get('destination_latitude'))
+        dest_lon = _parse_decimal(data.get('destination_longitude'))
+        transport_type = data.get('transport_type', 'Jeepney')
+
+        if not all([origin_lat, origin_lon, dest_lat, dest_lon]):
+            return JsonResponse({'error': 'Missing coordinates.'}, status=400)
+
+        # Calculate the route (this is the slow part)
+        distance_km, travel_minutes, route_geojson = get_route_and_calculate(
+            origin_lat, origin_lon, dest_lat, dest_lon, transport_type
+        )
+
+        if distance_km is None:
+            return JsonResponse({'error': 'Could not calculate route.'}, status=500)
+
+        # Calculate the fare
+        fare = calculate_fare(transport_type, distance_km, travel_minutes)
+
+        # Get the raw path coordinates for the map
+        path_coords = []
+        if route_geojson and 'features' in route_geojson and route_geojson['features']:
+            coords = route_geojson['features'][0]['geometry']['coordinates']
+            path_coords = [[coord[1], coord[0]] for coord in coords] # Flip [lon, lat] to [lat, lon]
+
+        # Send all the data back to the JavaScript
+        return JsonResponse({
+            'success': True,
+            'distance_km': float(distance_km),
+            'travel_time_minutes': float(travel_minutes),
+            'fare': float(fare),
+            'path_coords': path_coords
+        })
+
+    except Exception as e:
+        logger.error(f"Error in get_route_data: {e}")
+        return JsonResponse({'error': str(e)}, status=500)
+
 def logout_view(request):
     logout(request)
     return redirect('/')
-
-def toggle_newbie_mode(request):
-    current_state = request.session.get('newbie_mode', False) 
-    request.session['newbie_mode'] = not current_state
-    
-    return redirect('routes_page')
