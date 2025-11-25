@@ -17,7 +17,6 @@ import json
 import logging
 import folium
 
-# --- 1. ADD THIS IMPORT ---
 from django.urls import reverse
 
 from .forms import RouteForm, JeepneySuggestionForm
@@ -34,7 +33,7 @@ CEBU_CITY_KEYWORDS = ["cebu", "mandaue", "lapu", "liloan", "consolacion", "talis
 
 # Default map center (put in settings if you prefer)
 DEFAULT_MAP_CENTER = getattr(settings, 'DEFAULT_MAP_CENTER', (10.3157, 123.8854))
-DEFAULT_MAP_ZOOM = getattr(settings, 'DEFAULT_MAP_ZOOM', 14)
+DEFAULT_MAP_ZOOM = getattr(settings, 'DEFAULT_MAP_ZOOM', 15)
 
 # Cache timeouts (seconds)
 GEOCODE_CACHE_TTL = getattr(settings, 'GEOCODE_CACHE_TTL', 24 * 60 * 60)  # 24 hours
@@ -364,12 +363,14 @@ function attachHandlers() {
   if (!window.map) return;
   window.mapClickMode = null;
 
+  var originIcon = L.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'blue' });
+  var destIcon = L.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'red' });
+
   // Listen for messages from the parent page
   window.addEventListener("message", function(event) {
     const data = event.data;
     if (data?.type === "SET_PIN_MODE") {
       window.mapClickMode = data.mode;
-      alert("Click on the map to set " + data.mode);
     }
 
     if (data?.type === "DRAW_PIN") {
@@ -378,17 +379,20 @@ function attachHandlers() {
 
         const markerKey = mode === "origin" ? "originMarker" : "destinationMarker";
 
-        // Remove existing marker of the same type
+        // Remove existing marker
         if (window[markerKey]) {
             try { window.map.removeLayer(window[markerKey]); } catch {}
         }
         
-        // Add new marker at the specified coords
-        window[markerKey] = L.marker([lat, lng]).addTo(window.map)
+        // Select correct icon
+        var iconToUse = (mode === "origin") ? originIcon : destIcon;
+
+        // Add new marker with ICON
+        window[markerKey] = L.marker([lat, lng], {icon: iconToUse}).addTo(window.map)
             .bindPopup(label || (mode + ": " + lat.toFixed(5) + ", " + lng.toFixed(5)))
             .openPopup();
         
-        window.mapClickMode = null; // Take map out of pinning mode
+        window.mapClickMode = null; 
     }
 
     if (data?.type === "CLEAR_PINS") {
@@ -407,19 +411,17 @@ function attachHandlers() {
 
     const markerKey = window.mapClickMode === "origin" ? "originMarker" : "destinationMarker";
 
-    // Remove only the marker for the same type
     if (window[markerKey]) {
-    try { window.map.removeLayer(window[markerKey]); } catch {}
+      try { window.map.removeLayer(window[markerKey]); } catch {}
     }
 
-    // Add new marker
-    window[markerKey] = L.marker([lat, lng]).addTo(window.map)
-    .bindPopup(window.mapClickMode + ": " + lat.toFixed(5) + ", " + lng.toFixed(5))
-    .openPopup();
+    var iconToUse = (window.mapClickMode === "origin") ? originIcon : destIcon;
+    window[markerKey] = L.marker([lat, lng], {icon: iconToUse}).addTo(window.map);
 
     const latInput = parent.document.getElementById("id_" + window.mapClickMode + "_latitude");
     const lonInput = parent.document.getElementById("id_" + window.mapClickMode + "_longitude");
     const textInput = parent.document.querySelector("input[name='" + window.mapClickMode + "']");
+    
     if (latInput && lonInput) {
       latInput.value = lat.toFixed(6);
       lonInput.value = lng.toFixed(6);
@@ -435,11 +437,12 @@ function attachHandlers() {
 
 initFoliumMap();
 """
+
     m.get_root().html.add_child(folium.Element(f"<script>{click_js}</script>"))
     map_html = m._repr_html_()
 
     # Get saved routes for the user or session
-    saved_routes = [] # Default to an empty list for guests
+    saved_routes = []
     if request.user.is_authenticated:
         saved_routes = SavedRoute.objects.filter(user=request.user)
 
@@ -462,8 +465,10 @@ initFoliumMap();
         'calculated_time': calculated_time,
     }
 
-    return render(request, 'route_input/index.html', context)
-        
+    if request.session.get('newbie_mode', False):
+        return render(request, 'route_input/newbie_index.html', context)
+    else:
+        return render(request, 'route_input/index.html', context)
 
 
 def _get_coords_from_request_data(address_text):
@@ -544,17 +549,17 @@ def plan_route(request):
             route_instance.fare = calculate_fare(route_instance.transport_type, d_km, t_min)
 
     # --- THIS IS THE FIXED CODE ---
-        if route_instance.transport_type != 'Jeepney':
-            route_instance.code = None
-        else:
-            route_instance.code = request.POST.get('code')
+    if route_instance.transport_type != 'Jeepney':
+        route_instance.code = None
+    else:
+        route_instance.code = request.POST.get('code')
 
-        # The route is now calculated and stored in 'route_instance' in memory.
-        # ... (comments) ...
-        # This block is now UN-INDENTED and will run for ALL transport types
-        base_url = reverse('routes_page')
-        query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
-        return redirect(f"{base_url}?{query_params}")
+    # The route is now calculated and stored in 'route_instance' in memory.
+    # ... (comments) ...
+    # This block is now UN-INDENTED and will run for ALL transport types
+    base_url = reverse('routes_page')
+    query_params = f"origin_latitude={route_instance.origin_latitude}&origin_longitude={route_instance.origin_longitude}&origin_text={route_instance.origin}&destination_latitude={route_instance.destination_latitude}&destination_longitude={route_instance.destination_longitude}&destination_text={route_instance.destination}&transport_type={route_instance.transport_type}"
+    return redirect(f"{base_url}?{query_params}")
 
 # --- THIS IS THE CORRECTED FUNCTION ---
 @require_POST
@@ -697,7 +702,7 @@ def save_suggested_route(request):
         code=route.code,
         fare=route.fare or 0,
         notes=route.notes or "",
-        route_path_coords=route.route_path_coords # Copy the path data
+        route_path_coords=route.route_path_coords
     )
     return JsonResponse({"message": "Suggested route saved!", "id": saved.id})
 
@@ -754,7 +759,6 @@ def _get_session_key(request):
 @require_POST
 def get_route_data(request):
     try:
-        # Get data from the JavaScript fetch
         data = json.loads(request.body)
         origin_lat = _parse_decimal(data.get('origin_latitude'))
         origin_lon = _parse_decimal(data.get('origin_longitude'))
@@ -780,7 +784,7 @@ def get_route_data(request):
         path_coords = []
         if route_geojson and 'features' in route_geojson and route_geojson['features']:
             coords = route_geojson['features'][0]['geometry']['coordinates']
-            path_coords = [[coord[1], coord[0]] for coord in coords] # Flip [lon, lat] to [lat, lon]
+            path_coords = [[coord[1], coord[0]] for coord in coords]
 
         # Send all the data back to the JavaScript
         return JsonResponse({

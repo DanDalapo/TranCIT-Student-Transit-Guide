@@ -26,16 +26,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const pinDestinationBtn = $('#pinDestinationBtn');
     const navigateBtn = $('#navigateBtn');
     const resetFormBtn = $('#resetFormBtn');
+    
+    const helpBtn = $('#helpBtn');
+    const tutorialOverlay = $('#tutorialOverlay');
+    const tutorialTitle = $('#tutorialTitle');
+    const tutorialText = $('#tutorialText');
+    const tutorialSteps = $('#tutorialSteps');
+    const tutorialIndicator = $('#tutorialIndicator');
+    const nextTutorialBtn = $('#nextTutorial');
+    const skipTutorialBtn = $('#skipTutorial');
 
     const mapIframe = $('#map-container iframe');
     let foliumMap; 
     let L_Leaflet; 
-    let activeRouteLayers = {}; 
+    
+    // State Variables
+    let currentRouteLayer = null;   
+    let currentActiveButton = null; 
 
     const csrftoken = document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1];
 
-    // === Utilities ===
-    const alertMsg = (msg) => alert(msg);
+    const alertMsg = (msg) => typeof showNotification === 'function' ? showNotification(msg) : alert(msg);
+    
     const qs = (params) => new URLSearchParams(params).toString();
 
     const postJSON = async (url, data) => {
@@ -54,14 +66,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function getMapObjects() {
         if (foliumMap && L_Leaflet) return true; 
-
         if (mapIframe && mapIframe.contentWindow) {
-            if (mapIframe.contentWindow.map) {
-                foliumMap = mapIframe.contentWindow.map;
-            }
-            if (mapIframe.contentWindow.L) {
-                L_Leaflet = mapIframe.contentWindow.L;
-            }
+            if (mapIframe.contentWindow.map) foliumMap = mapIframe.contentWindow.map;
+            if (mapIframe.contentWindow.L) L_Leaflet = mapIframe.contentWindow.L;
         }
         return foliumMap && L_Leaflet;
     }
@@ -70,122 +77,62 @@ document.addEventListener('DOMContentLoaded', () => {
     function toggleNavigateButton() {
         const hasOrigin = originLat.value && originLon.value;
         const hasDestination = destLat.value && destLon.value;
-        const enabled = hasOrigin && hasDestination;
-
-        navigateBtn.disabled = !enabled;
-        navigateBtn.style.opacity = enabled ? 1 : 0.6;
-        navigateBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+        navigateBtn.disabled = !(hasOrigin && hasDestination);
+        navigateBtn.style.opacity = (hasOrigin && hasDestination) ? 1 : 0.6;
+        navigateBtn.style.cursor = (hasOrigin && hasDestination) ? 'pointer' : 'not-allowed';
     }
-
     setInterval(toggleNavigateButton, 1000);
 
     function syncInputsFromURL() {
         const params = new URLSearchParams(window.location.search);
-
         if (params.has('origin_latitude')) originLat.value = params.get('origin_latitude');
         if (params.has('origin_longitude')) originLon.value = params.get('origin_longitude');
         if (params.has('destination_latitude')) destLat.value = params.get('destination_latitude');
         if (params.has('destination_longitude')) destLon.value = params.get('destination_longitude');
-
         if (params.has('origin_text')) originInput.value = decodeURIComponent(params.get('origin_text'));
         if (params.has('destination_text')) destinationInput.value = decodeURIComponent(params.get('destination_text'));
-
         toggleNavigateButton();
     }
-
     syncInputsFromURL();
     window.addEventListener('load', syncInputsFromURL);
-    window.addEventListener('pageshow', syncInputsFromURL);
-
-    const tooltip = document.createElement('div');
-    tooltip.textContent = 'Please pin both your origin and destination';
-    Object.assign(tooltip.style, {
-        position: 'absolute',
-        background: '#333',
-        color: '#fff',
-        padding: '6px 10px',
-        borderRadius: '6px',
-        fontSize: '12px',
-        whiteSpace: 'nowrap',
-        pointerEvents: 'none',
-        opacity: '0',
-        transition: 'opacity 0.2s'
-    });
-    document.body.appendChild(tooltip);
-
-    const showTooltip = (e) => {
-        if (!navigateBtn.disabled) return;
-        tooltip.style.left = e.pageX + 15 + 'px';
-        tooltip.style.top = e.pageY - 35 + 'px';
-        tooltip.style.opacity = '1';
-    };
-    const hideTooltip = () => (tooltip.style.opacity = '0');
-    navigateBtn?.addEventListener('mousemove', showTooltip);
-    navigateBtn?.addEventListener('mouseleave', hideTooltip);
-
-    const saveTooltip = document.createElement('div');
-    saveTooltip.textContent = 'Please navigate a route first before saving';
-    Object.assign(saveTooltip.style, {
-        position: 'absolute',
-        background: '#333',
-        color: '#fff',
-        padding: '6px 10px',
-        borderRadius: '6px',
-        fontSize: '12px',
-        whiteSpace: 'nowrap',
-        pointerEvents: 'none',
-        opacity: '0',
-        transition: 'opacity 0.2s'
-    });
-    document.body.appendChild(saveTooltip);
-
-    const showSaveTooltip = (e) => {
-        if (!saveMyRouteBtn.disabled) return;
-        saveTooltip.style.left = e.pageX + 15 + 'px';
-        saveTooltip.style.top = e.pageY - 35 + 'px';
-        saveTooltip.style.opacity = '1';
-    };
-    const hideSaveTooltip = () => (saveTooltip.style.opacity = '0');
-    saveMyRouteBtn?.addEventListener('mousemove', showSaveTooltip);
-    saveMyRouteBtn?.addEventListener('mouseleave', hideSaveTooltip);
 
     function sendPinCommand(mode) {
         const iframe = document.querySelector('#map-container iframe');
         if (!iframe?.contentWindow) return alertMsg('Map not ready yet. Please wait.');
-
+        
         const params = new URLSearchParams(window.location.search);
-        if (mode === 'origin' && destLat.value && destLon.value) {
+        if (mode === 'origin' && destLat.value) {
             params.set('destination_latitude', destLat.value);
             params.set('destination_longitude', destLon.value);
             params.set('destination_text', destinationInput.value);
-        } else if (mode === 'destination' && originLat.value && originLon.value) {
+        } else if (mode === 'destination' && originLat.value) {
             params.set('origin_latitude', originLat.value);
             params.set('origin_longitude', originLon.value);
             params.set('origin_text', originInput.value);
         }
-
         updateURL(params);
         iframe.contentWindow.postMessage({ type: 'SET_PIN_MODE', mode }, '*');
+        
+        const niceMode = mode.charAt(0).toUpperCase() + mode.slice(1);
+        alertMsg(`Click anywhere on the map to set ${niceMode}`);
     }
-
     pinOriginBtn?.addEventListener('click', () => sendPinCommand('origin'));
     pinDestinationBtn?.addEventListener('click', () => sendPinCommand('destination'));
 
-    navigateBtn?.addEventListener('click', () => {
-        // --- 1. Run all our checks first ---
+    navigateBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+
         if (!transportSelect.value) {
+            transportSelect.classList.add('input-error');
+            transportSelect.addEventListener('change', () => { transportSelect.classList.remove('input-error'); }, { once: true });
             return alertMsg('Please choose a transport type.');
         }
-        if (!originLat.value && !destLat.value) return alertMsg('Please pin both your origin and destination.');
-        if (!originLat.value) return alertMsg('Please pin your origin.');
-        if (!destLat.value) return alertMsg('Please pin your destination.');
-        if (!getMapObjects()) return alertMsg('Map is not ready yet. Please wait.');
+        if (!originLat.value || !destLat.value) return alertMsg('Please pin both origin and destination.');
+        if (!getMapObjects()) return alertMsg('Map is not ready yet.');
 
-        // --- 2. Show a loading state ---
         navigateBtn.disabled = true;
         navigateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Calculating...';
 
-        // --- 3. Prepare the data to send ---
         const routeData = {
             origin_latitude: originLat.value,
             origin_longitude: originLon.value,
@@ -196,217 +143,73 @@ document.addEventListener('DOMContentLoaded', () => {
             transport_type: transportSelect.value
         };
 
-        // --- 4. Call our new view in the background ---
         fetch('/routes/get_route_data/', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrftoken
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
             body: JSON.stringify(routeData)
         })
-        .then(response => response.json())
+        .then(r => r.json())
         .then(data => {
-            if (data.error) {
-                throw new Error(data.error);
-            }
+            if (data.error) throw new Error(data.error);
 
-            // --- 5. Success! Update the UI ---
-
-            // Fill the hidden fields for the "Save" button
             fareInput.value = data.fare.toFixed(2);
             distInput.value = data.distance_km.toFixed(2);
             timeInput.value = data.travel_time_minutes.toFixed(2);
-
-            // Update the visible results panel
+            
             calculatedFareEl.textContent = `Php ${data.fare.toFixed(2)}`;
             calculatedTimeEl.textContent = `${data.travel_time_minutes.toFixed(0)} min`;
             calculatedDistanceEl.textContent = `${data.distance_km.toFixed(1)} km`;
             calculatedTransportEl.textContent = routeData.transport_type;
 
-            // Draw the route and pins on the map
             drawNavigatedRoute(data.path_coords, routeData);
 
-            // Re-enable the "Navigate" button and "Save" button
             navigateBtn.innerHTML = '<i class="fa-solid fa-route"></i> Navigate Route';
-            toggleNavigateButton(); // This will re-enable it
-            if (saveMyRouteBtn) {
-                saveMyRouteBtn.disabled = false;
-            }
-
+            toggleNavigateButton();
+            if (saveMyRouteBtn) saveMyRouteBtn.disabled = false;
         })
-        .catch(error => {
-            console.error('Navigation error:', error);
-            alertMsg(`Error: Could not calculate route. ${error.message}`);
+        .catch(err => {
+            console.error(err);
+            alertMsg(`Error: ${err.message}`);
             navigateBtn.innerHTML = '<i class="fa-solid fa-route"></i> Navigate Route';
-            toggleNavigateButton(); // Re-enable it on failure
+            toggleNavigateButton();
         });
     });
 
-    function updateFare() {
-        if (distInput && distInput.value && parseFloat(distInput.value) > 0) {
-            return; 
+    function clearCurrentRoute() {
+        if (currentRouteLayer) {
+            foliumMap.removeLayer(currentRouteLayer);
+            currentRouteLayer = null;
         }
-        
-
-        const type = transportSelect?.value;
-        if (!type) return;
-
-
-        calculatedFareEl.textContent = 'Php 0.00';
-        calculatedTimeEl.textContent = '-- min';
-        calculatedDistanceEl.textContent = '-- km';
-        calculatedTransportEl.textContent = '--';
-        fareInput.value = '0.00';
-        distInput.value = '';
-        timeInput.value = '';
-
-
-        if (!originInput.value.trim() || !destinationInput.value.trim()) {
-            return;
+        if (currentActiveButton) {
+            const isSaved = currentActiveButton.classList.contains('view-saved-route');
+            const originalText = isSaved ? 'View' : 'View Route';
+            currentActiveButton.innerHTML = `<i class="fa-solid fa-map"></i> ${originalText}`;
+            currentActiveButton.classList.remove('viewing');
+            currentActiveButton = null;
         }
-
-        if (type === 'Jeepney') {
-            if (codeInput) codeInput.value = 'UNKNOWN';
-            fareInput.value = '13.00';
-            calculatedFareEl.textContent = 'Php ~13.00 (Fixed)';
-            calculatedTransportEl.textContent = 'Jeepney';
-            return;
-        }
-
-        if (!['Motorcycle'].includes(type)) return;
-
-        const dist = 5 + Math.random() * 10;
-        const time = dist * 3;
-        const fare = type === 'Taxi' ? 40 + 13.5 * dist + 2 * time : 20 + 10 * dist;
-
-        distInput.value = dist.toFixed(2);
-        timeInput.value = time.toFixed(2);
-        fareInput.value = fare.toFixed(2);
-        
-        calculatedFareEl.textContent = `Php ${fare.toFixed(2)}`;
-        calculatedTimeEl.textContent = `${time.toFixed(0)} min`;
-        calculatedDistanceEl.textContent = `${dist.toFixed(1)} km`;
-        calculatedTransportEl.textContent = type;
     }
 
-    ['change', 'input'].forEach(evt => {
-        originInput?.addEventListener(evt, updateFare);
-        destinationInput?.addEventListener(evt, updateFare);
-    });
-    updateFare();
+    function drawNavigatedRoute(pathCoords, routeData) {
+        if (!getMapObjects()) return;
+        clearCurrentRoute(); 
 
-    detectBtn?.addEventListener('click', () => {
-        if (!navigator.geolocation) return alertMsg('Geolocation not supported.');
-        originInput.value = 'Detecting location...';
-
-        navigator.geolocation.getCurrentPosition(async pos => {
-            const { latitude: lat, longitude: lon } = pos.coords;
-            originLat.value = lat;
-            originLon.value = lon;
-            toggleNavigateButton();
-
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
-                const data = await res.json();
-                const addr = data?.display_name || `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
-                originInput.value = addr;
-
-                const params = {
-                    origin_latitude: lat,
-                    origin_longitude: lon,
-                    origin_text: addr
-                };
-                if (destLat.value && destLon.value) {
-                    params.destination_latitude = destLat.value;
-                    params.destination_longitude = destLon.value;
-                    params.destination_text = destinationInput.value;
-                }
-                window.location.href = `${window.location.pathname}?${qs(params)}`;
-            } catch {
-                alertMsg('Unable to retrieve address, but location saved.');
-            }
-        }, err => {
-            console.error(err);
-            alertMsg('Location detection failed.');
-        }, { enableHighAccuracy: true, timeout: 7000 });
-    });
-
-    let debounce;
-    destinationInput?.addEventListener('input', () => {
-        clearTimeout(debounce);
-        const query = destinationInput.value.trim();
-        if (query.length < 3) return (suggestionsContainer.style.display = 'none');
-
-        debounce = setTimeout(async () => {
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}, Cebu City, Philippines&format=json&limit=5`);
-                const results = await res.json();
-
-                suggestionsContainer.innerHTML = '';
-                if (!results.length) return (suggestionsContainer.style.display = 'none');
-
-                results.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = 'destination-suggestions-item';
-                    div.textContent = item.display_name;
-
-                    div.addEventListener('click', () => {
-                        destinationInput.value = item.display_name;
-                        destLat.value = item.lat;
-                        destLon.value = item.lon;
-                        suggestionsContainer.style.display = 'none';
-                        toggleNavigateButton();
-                        
-                        if (mapIframe && mapIframe.contentWindow) {
-                            mapIframe.contentWindow.postMessage({
-                                type: 'DRAW_PIN',
-                                mode: 'destination',
-                                lat: item.lat,
-                                lng: item.lon,
-                                label: item.display_name
-                            }, '*');
-                        }
-                    });
-                    suggestionsContainer.appendChild(div);
-                });
-                suggestionsContainer.style.display = 'block';
-            } catch {
-                suggestionsContainer.style.display = 'none';
-            }
-        }, 400);
-    });
-
-    document.addEventListener('click', (e) => {
-        if (!suggestionsContainer.contains(e.target) && e.target !== destinationInput)
-            suggestionsContainer.style.display = 'none';
-    });
-
-    if (saveMyRouteBtn) {
-        saveMyRouteBtn.addEventListener('click', () => {
-            const formData = new FormData();
-            formData.append('origin', $('#id_origin').value);
-            formData.append('destination', $('#id_destination').value);
-            formData.append('transport_type', $('#id_transport_type').value);
-            formData.append('origin_latitude', $('#id_origin_latitude').value);
-            formData.append('origin_longitude', $('#id_origin_longitude').value);
-            formData.append('destination_latitude', $('#id_destination_latitude').value);
-            formData.append('destination_longitude', $('#id_destination_longitude').value);
-            formData.append('fare', $('#id_fare').value);
-            formData.append('distance_km', $('#id_distance_km').value);
-            formData.append('travel_time_minutes', $('#id_travel_time_minutes').value);
-            formData.append('notes', $('#id_notes').value);
+        try {
+            const polyline = L_Leaflet.polyline(pathCoords, { color: '#2B86C3EE', weight: 8, opacity: 0.8 });
             
-            if ($('#id_transport_type').value === 'Jeepney') {
-                const codeInput = $('#suggest_code');
-                if (codeInput && codeInput.value) {
-                     formData.append('code', codeInput.value);
-                } else {
-                     formData.append('code', 'UNKNOWN');
-                }
-            }
-            performSave('/routes/save_current_route/', formData);
-        });
+            const originIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'blue' });
+            const destIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'red' });
+
+            const originMarker = L_Leaflet.marker([routeData.origin_latitude, routeData.origin_longitude], {icon: originIcon}).bindPopup(routeData.origin_text || "Origin");
+            const destMarker = L_Leaflet.marker([routeData.destination_latitude, routeData.destination_longitude], {icon: destIcon}).bindPopup(routeData.destination_text || "Destination");
+
+            const layerGroup = L_Leaflet.featureGroup([polyline, originMarker, destMarker]);
+            layerGroup.addTo(foliumMap);
+            foliumMap.fitBounds(layerGroup.getBounds().pad(0.1));
+            currentRouteLayer = layerGroup;
+        } catch (err) {
+            console.error(err);
+            alertMsg('Error displaying route on map.');
+        }
     }
 
     const saveSuggestionsContainer = $('#dynamicSuggestions');
@@ -416,138 +219,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const viewButton = e.target.closest('.view-suggested-route');
             if (saveButton) {
                 const routeId = saveButton.dataset.routeId;
-                if (!routeId) return alert('Error: No route ID found.');
                 const formData = new FormData();
                 formData.append('route_id', routeId);
                 performSave('/routes/save_suggested_route/', formData);
             }
-            if (viewButton) { 
-                handleViewRouteClick(viewButton);
-            }
+            if (viewButton) handleViewRouteClick(viewButton);
         });
-    }
-
-    function handleViewRouteClick(button) {
-        if (!getMapObjects()) return alert('Map is not ready yet. Please wait a moment and try again.');
-
-        const routeId = button.dataset.routeId;
-        const isViewing = button.classList.contains('viewing');
-
-        if (isViewing) {
-            if (activeRouteLayers[routeId]) {
-                foliumMap.removeLayer(activeRouteLayers[routeId]); 
-                delete activeRouteLayers[routeId]; 
-            }
-            const originalText = button.classList.contains('view-saved-route') ? 'View' : 'View Route';
-            button.innerHTML = `<i class="fa-solid fa-map"></i> ${originalText}`;
-            button.classList.remove('viewing');
-            button.style.backgroundColor = '#2196F3'; 
-        } else {
-            const ds = button.dataset; 
-            if (!ds.path || ds.path.length < 3 || !ds.originLat || !ds.destLat) {
-                alert('Error: No path data found for this route.');
-                return;
-            }
-
-            try {
-                const pathCoords = JSON.parse(ds.path);
-                const originPopup = ds.routeOrigin || "Origin";
-                const destPopup = ds.routeDestination || "Destination";
-
-                const polyline = L_Leaflet.polyline(pathCoords, { color: 'purple', weight: 4, opacity: 0.8 });
-                let originMarker, destMarker;
-
-                try {
-                    const originIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'blue' });
-                    const destIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'red' });
-                    originMarker = L_Leaflet.marker([ds.originLat, ds.originLon], {icon: originIcon}).bindPopup(originPopup);
-                    destMarker = L_Leaflet.marker([ds.destLat, ds.destLon], {icon: destIcon}).bindPopup(destPopup);
-                } catch (iconError) {
-                    originMarker = L_Leaflet.marker([ds.originLat, ds.originLon]).bindPopup(originPopup);
-                    destMarker = L_Leaflet.marker([ds.destLat, ds.destLon]).bindPopup(destPopup);
-                }
-
-                const routeLayerGroup = L_Leaflet.featureGroup([polyline, originMarker, destMarker]);
-                routeLayerGroup.addTo(foliumMap);
-                foliumMap.fitBounds(routeLayerGroup.getBounds().pad(0.1));
-                activeRouteLayers[routeId] = routeLayerGroup;
-
-                const unviewText = button.classList.contains('view-saved-route') ? 'Unview' : 'Unview Route';
-                button.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${unviewText}`;
-                button.classList.add('viewing');
-                button.style.backgroundColor = '#f44336'; 
-            } catch (err) {
-                console.error('Error showing route:', err);
-                alert('Error: Could not display this route.');
-            }
-        }
-    }
-
-    function drawNavigatedRoute(pathCoords, routeData) {
-        if (!getMapObjects()) return;
-
-        const routeId = 'navigatedRoute'; // A special ID for this route
-
-        // Clear any previous navigated route
-        if (activeRouteLayers[routeId]) {
-            foliumMap.removeLayer(activeRouteLayers[routeId]);
-            delete activeRouteLayers[routeId];
-        }
-
-        try {
-            const originPopup = routeData.origin_text || "Origin";
-            const destPopup = routeData.destination_text || "Destination";
-
-            // 1. Create the Polyline
-            const polyline = L_Leaflet.polyline(pathCoords, {
-                color: '#2B86C3EE', // The blue color from your views.py
-                weight: 8,
-                opacity: 0.8
-            });
-
-            // 2. Create Markers
-            let originMarker, destMarker;
-            try {
-                const originIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'blue' });
-                const destIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'red' });
-                originMarker = L_Leaflet.marker([routeData.origin_latitude, routeData.origin_longitude], {icon: originIcon}).bindPopup(originPopup);
-                destMarker = L_Leaflet.marker([routeData.destination_latitude, routeData.destination_longitude], {icon: destIcon}).bindPopup(destPopup);
-            } catch (iconError) {
-                originMarker = L_Leaflet.marker([routeData.origin_latitude, routeData.origin_longitude]).bindPopup(originPopup);
-                destMarker = L_Leaflet.marker([routeData.destination_latitude, routeData.destination_longitude]).bindPopup(destPopup);
-            }
-
-            // 3. Create a FeatureGroup
-            const routeLayerGroup = L_Leaflet.featureGroup([polyline, originMarker, destMarker]);
-
-            routeLayerGroup.addTo(foliumMap);
-            foliumMap.fitBounds(routeLayerGroup.getBounds().pad(0.1));
-            activeRouteLayers[routeId] = routeLayerGroup;
-
-        } catch (err) {
-            console.error('Error drawing navigated route:', err);
-            alertMsg('Error: Could not display the route on the map.');
-        }
-    }       
-    
-    async function performSave(url, formData) {
-        if (!csrftoken) return alert('Error: CSRF token not found.');
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' },
-                body: formData
-            });
-            const data = await response.json();
-            if (response.ok && data.message) {
-                alert(data.message); 
-                window.location.reload();
-            } else {
-                alert('Error saving route: ' + (data.error || 'Unknown error'));
-            }
-        } catch (error) {
-            alert('An error occurred while trying to save the route.');
-        }
     }
 
     const savedListContainer = $('#savedList');
@@ -557,173 +234,133 @@ document.addEventListener('DOMContentLoaded', () => {
             const viewButton = e.target.closest('.view-saved-route');
             if (deleteButton) {
                 const savedId = deleteButton.dataset.savedId;
-                if (confirm('Are you sure you want to delete this route?')) {
+                if (confirm('Delete this route?')) {
                     const formData = new FormData();
                     formData.append('saved_id', savedId);
-                    const elementToRemove = deleteButton.closest('.saved-route-item');
-                    performDelete('/routes/delete_saved_route/', formData, elementToRemove);
+                    const el = deleteButton.closest('.saved-route-item');
+                    performDelete('/routes/delete_saved_route/', formData, el);
                 }
             }
-            if (viewButton) handleViewRouteClick(viewButton); 
+            if (viewButton) handleViewRouteClick(viewButton);
         });
     }
 
-    async function performDelete(url, formData, elementToRemove) {
-        if (!csrftoken) return alert('Error: CSRF token not found.');
+    function handleViewRouteClick(button) {
+        if (!getMapObjects()) return alertMsg('Map is not ready.');
+        
+        if (currentActiveButton === button) {
+            clearCurrentRoute();
+            return;
+        }
+        if (currentActiveButton) {
+            clearCurrentRoute();
+        }
+
+        const ds = button.dataset;
+        if (!ds.path || ds.path.length < 3) return alertMsg('Error: No path data.');
+
         try {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' },
-                body: formData
-            });
-            const data = await response.json();
-            if (response.ok && data.success) {
-                elementToRemove.style.opacity = '0';
-                setTimeout(() => { elementToRemove.remove(); }, 300);
-            } else {
-                alert('Error deleting route: ' + (data.error || 'Unknown error'));
+            const pathCoords = JSON.parse(ds.path);
+            const polyline = L_Leaflet.polyline(pathCoords, { color: 'purple', weight: 4, opacity: 0.8 });
+            
+            let originMarker, destMarker;
+            try {
+                const oIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'blue' });
+                const dIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'red' });
+                originMarker = L_Leaflet.marker([ds.originLat, ds.originLon], {icon: oIcon}).bindPopup("Origin");
+                destMarker = L_Leaflet.marker([ds.destLat, ds.destLon], {icon: dIcon}).bindPopup("Destination");
+            } catch(e) {
+                originMarker = L_Leaflet.marker([ds.originLat, ds.originLon]);
+                destMarker = L_Leaflet.marker([ds.destLat, ds.destLon]);
             }
-        } catch (error) {
-            alert('An error occurred while trying to delete the route.');
+
+            const layerGroup = L_Leaflet.featureGroup([polyline, originMarker, destMarker]);
+            layerGroup.addTo(foliumMap);
+            foliumMap.fitBounds(layerGroup.getBounds().pad(0.1));
+
+            currentRouteLayer = layerGroup;
+            currentActiveButton = button;
+
+            const unviewText = button.classList.contains('view-saved-route') ? 'Unview' : 'Unview Route';
+            button.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${unviewText}`;
+            button.classList.add('viewing');
+        } catch (err) {
+            console.error(err);
+            alertMsg('Error displaying route.');
         }
     }
 
-    const tutorialSteps = [
-      {
-        title: "Welcome to TranCIT! 🚍",
-        text: "TranCIT helps you navigate through Cebu City using public transportation. Let's show you around!",
-        steps: null,
-        highlight: null
-      },
-      {
-        title: "Plan Your Route",
-        text: "Start by entering your journey details in the left panel.",
-        steps: [
-          "Enter your starting location",
-          "Enter your destination",
-          "Choose your preferred transport",
-          "Click 'Find Route' to see your options"
-        ],
-        highlight: "sidebarPanel"
-      },
-      {
-        title: "Interactive Map",
-        text: "The center panel shows an interactive map of your route. You'll see:",
-        steps: [
-          "Your starting point and destination",
-          "Suggested routes highlighted",
-          "Transport stops along the way",
-          "Estimated travel time"
-        ],
-        highlight: "mapPanel"
-      },
-      {
-        title: "Helpful Suggestions",
-        text: "The right panel provides useful information:",
-        steps: [
-          "Browse community-submitted jeepney routes",
-          "Popular routes to common destinations",
-          "Share your own route suggestions",
-          "Save your favorite routes to your list"
-        ],
-        highlight: "suggestionsPanel"
-      },
-      {
-        title: "You're All Set! 🎉",
-        text: "You're ready to start using TranCIT. Click the Help button anytime to see this tutorial again.",
-        steps: null,
-        highlight: null
-      }
+    async function performSave(url, formData) {
+        if (!csrftoken) return alertMsg('Error: CSRF token not found.');
+        const res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
+        const data = await res.json();
+        if (res.ok) { alertMsg(data.message); window.location.reload(); }
+        else alertMsg('Error: ' + data.error);
+    }
+
+    async function performDelete(url, formData, el) {
+        if (!csrftoken) return alertMsg('Error: CSRF token not found.');
+        const res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
+        const data = await res.json();
+        if (res.ok) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
+        else alertMsg('Error: ' + data.error);
+    }
+
+    // === 7. TUTORIAL LOGIC (FIXED) ===
+    const tutorialStepsData = [
+      { title: "Welcome to TranCIT! 🚍", text: "TranCIT helps you navigate Cebu City. Let's show you around!", highlight: null },
+      { title: "Plan Your Route", text: "Enter details in the left panel.", highlight: ".sidebar" },
+      { title: "Interactive Map", text: "The map shows your route and stops.", highlight: ".map-area" },
+      { title: "Helpful Suggestions", text: "See jeepney routes and suggestions on the right.", highlight: ".suggestions" },
+      { title: "You're All Set!", text: "Click Help anytime to see this again.", highlight: null }
     ];
 
     let currentStep = 0;
-    const overlay = document.getElementById('tutorialOverlay');
-    const title = document.getElementById('tutorialTitle');
-    const text = document.getElementById('tutorialText');
-    const stepsContainer = document.getElementById('tutorialSteps');
-    const indicator = document.getElementById('tutorialIndicator');
-    const nextBtn = document.getElementById('nextTutorial');
-    const skipBtn = document.getElementById('skipTutorial');
-    const helpBtn = document.getElementById('helpBtn');
 
     function showTutorialStep(step) {
-      const stepData = tutorialSteps[step];
+        const data = tutorialStepsData[step];
+        $$('.highlight-pulse').forEach(el => el.classList.remove('highlight-pulse'));
+        
+        tutorialTitle.textContent = data.title;
+        tutorialText.textContent = data.text;
+        tutorialIndicator.textContent = `Step ${step + 1} of ${tutorialStepsData.length}`;
 
-      // Remove previous highlights
-      document.querySelectorAll('.highlight-pulse').forEach(el => {
-        el.classList.remove('highlight-pulse');
-      });
-
-      // Update content
-      title.textContent = stepData.title;
-      text.textContent = stepData.text;
-
-      // Show steps if available
-      if (stepData.steps) {
-        stepsContainer.style.display = 'block';
-        stepsContainer.innerHTML = '<ol>' +
-          stepData.steps.map(s => `<li>${s}</li>`).join('') +
-          '</ol>';
-      } else {
-        stepsContainer.style.display = 'none';
-      }
-
-      // Highlight element
-      if (stepData.highlight) {
-        const element = document.getElementById(stepData.highlight);
-        if (element) {
-          element.classList.add('highlight-pulse');
+        if (data.highlight) {
+            const el = document.querySelector(data.highlight);
+            if (el) el.classList.add('highlight-pulse');
         }
-      }
 
-      // Update indicator
-      indicator.textContent = `Step ${step + 1} of ${tutorialSteps.length}`;
-
-      // Update button text
-      if (step === tutorialSteps.length - 1) {
-        nextBtn.textContent = 'Get Started';
-      } else {
-        nextBtn.textContent = 'Next';
-      }
+        nextTutorialBtn.textContent = (step === tutorialStepsData.length - 1) ? 'Finish' : 'Next';
     }
 
     function startTutorial() {
-      currentStep = 0;
-      overlay.classList.add('active');
-      showTutorialStep(currentStep);
+        currentStep = 0;
+        tutorialOverlay.classList.add('active');
+        showTutorialStep(0);
     }
 
     function closeTutorial() {
-      overlay.classList.remove('active');
-      document.querySelectorAll('.highlight-pulse').forEach(el => {
-        el.classList.remove('highlight-pulse');
-      });
-      // Save that user has seen tutorial
-      localStorage.setItem('trancit_tutorial_seen', 'true');
+        tutorialOverlay.classList.remove('active');
+        $$('.highlight-pulse').forEach(el => el.classList.remove('highlight-pulse'));
+        localStorage.setItem('trancit_tutorial_seen', 'true');
     }
 
-    nextBtn.addEventListener('click', () => {
-      if (currentStep < tutorialSteps.length - 1) {
-        currentStep++;
-        showTutorialStep(currentStep);
-      } else {
-        closeTutorial();
-      }
-    });
+    if (nextTutorialBtn) {
+        nextTutorialBtn.addEventListener('click', () => {
+            if (currentStep < tutorialStepsData.length - 1) {
+                currentStep++;
+                showTutorialStep(currentStep);
+            } else {
+                closeTutorial();
+            }
+        });
+    }
+    if (skipTutorialBtn) skipTutorialBtn.addEventListener('click', closeTutorial);
+    if (helpBtn) helpBtn.addEventListener('click', startTutorial);
 
-    skipBtn.addEventListener('click', closeTutorial);
+    const hasSeen = localStorage.getItem('trancit_tutorial_seen');
+    if (!hasSeen) setTimeout(startTutorial, 1000);
 
-    helpBtn.addEventListener('click', startTutorial);
-
-    // Show tutorial on first visit
-    window.addEventListener('load', () => {
-      const hasSeenTutorial = localStorage.getItem('trancit_tutorial_seen');
-      if (!hasSeenTutorial) {
-        setTimeout(startTutorial, 500);
-      }
-    });
-
-    // MOBILE TAB SWITCHING LOGIC
     const tabPlan = $('#tabPlan');
     const tabSuggestions = $('#tabSuggestions');
     const panelSidebar = $('.sidebar');
@@ -733,67 +370,57 @@ document.addEventListener('DOMContentLoaded', () => {
         function handleTabSwitch(mode) {
             [tabPlan, tabSuggestions].forEach(t => t.classList.remove('active'));
             [panelSidebar, panelSuggestions].forEach(p => p.classList.remove('active-panel'));
-
-            if (mode === 'plan') {
-                tabPlan.classList.add('active');
-                panelSidebar.classList.add('active-panel');
-            } else {
-                tabSuggestions.classList.add('active');
-                panelSuggestions.classList.add('active-panel');
-            }
+            if (mode === 'plan') { tabPlan.classList.add('active'); panelSidebar.classList.add('active-panel'); }
+            else { tabSuggestions.classList.add('active'); panelSuggestions.classList.add('active-panel'); }
         }
         tabPlan.addEventListener('click', () => handleTabSwitch('plan'));
         tabSuggestions.addEventListener('click', () => handleTabSwitch('suggestions'));
     }
 
-    // DRAGGABLE BOTTOM SHEET LOGIC
     const panels = [panelSidebar, panelSuggestions];
-
     panels.forEach(panel => {
-        const handle = panel.querySelector('.drag-handle');
+        const handle = panel ? panel.querySelector('.drag-handle') : null;
         if (!handle) return;
-
         let startY, startHeight;
-
         handle.addEventListener('touchstart', (e) => {
             startY = e.touches[0].clientY;
             startHeight = parseInt(document.defaultView.getComputedStyle(panel).height, 10);
             panel.classList.add('is-dragging'); 
         }, { passive: false });
-
         handle.addEventListener('touchmove', (e) => {
             if (!startY) return;
             e.preventDefault(); 
             const currentY = e.touches[0].clientY;
             const deltaY = startY - currentY; 
-            const newHeight = startHeight + deltaY;
-
-            const minHeight = window.innerHeight * 0.20; 
-            const maxHeight = window.innerHeight * 0.90; 
-
-            if (newHeight > minHeight && newHeight < maxHeight) {
-                panel.style.height = `${newHeight}px`;
-            }
+            const newH = startHeight + deltaY;
+            if (newH > window.innerHeight * 0.20 && newH < window.innerHeight * 0.90) panel.style.height = `${newH}px`;
         }, { passive: false });
-
         handle.addEventListener('touchend', () => {
             panel.classList.remove('is-dragging');
-            const currentHeight = parseInt(panel.style.height, 10);
-            const screenHeight = window.innerHeight;
-
-            if (currentHeight > screenHeight * 0.70) {
-                panel.style.height = '85vh';
-            } else if (currentHeight < screenHeight * 0.30) {
-                panel.style.height = '25vh';
-            } else {
-                panel.style.height = '45vh';
-            }
+            const h = parseInt(panel.style.height, 10);
+            if (h > window.innerHeight * 0.70) panel.style.height = '85vh';
+            else if (h < window.innerHeight * 0.30) panel.style.height = '25vh';
+            else panel.style.height = '45vh';
             startY = null;
+        });
+        handle.addEventListener('mousedown', (e) => {
+            startY = e.clientY;
+            startHeight = parseInt(document.defaultView.getComputedStyle(panel).height, 10);
+            panel.classList.add('is-dragging');
+            const onMouseMove = (me) => {
+                const delta = startY - me.clientY;
+                const newH = startHeight + delta;
+                if(newH > 100 && newH < window.innerHeight - 50) panel.style.height = `${newH}px`;
+            };
+            const onMouseUp = () => {
+                panel.classList.remove('is-dragging');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
         });
     });
 
-    resetFormBtn?.addEventListener('click', () => {
-        window.location.href = '/routes/';
-    });
-
+    resetFormBtn?.addEventListener('click', () => window.location.href = '/routes/');
 });
