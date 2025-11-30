@@ -1,0 +1,45 @@
+.custom-notification {
+  position: fixed;
+  top: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #FFFFFF;
+  color: #333;
+  border-left: 6px solid #4CAF50; 
+  padding: 16px 24px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  opacity: 0;
+  margin-top: -20px;
+  pointer-events: none;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.custom-notification.show {
+  opacity: 1;
+  margin-top: 0;
+  pointer-events: auto;
+}
+
+.custom-notification::before {
+  content: '';
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  margin-right: 12px;
+  vertical-align: middle;
+  margin-bottom: 2px;
+  background-color: #4CAF50; 
+  -webkit-mask-image: url('../images/exclamation_icon.svg');
+  mask-image: url('../images/exclamation_icon.svg');
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
