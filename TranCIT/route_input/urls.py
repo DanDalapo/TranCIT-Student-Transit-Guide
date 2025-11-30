@@ -5,6 +5,7 @@ urlpatterns = [
     path('', views.index, name='routes_page'),
     path('plan_route/', views.plan_route, name='plan_route'),
     path('get_route_data/', views.get_route_data, name='get_route_data'),
+    path('get_segment_path/', views.get_segment_path, name='get_segment_path'),
     path('suggest_route/', views.suggest_route, name='suggest_route'),
     path('save_current_route/', views.save_current_route, name='save_current_route'),
     path('save_suggested_route/', views.save_suggested_route, name='save_suggested_route'),

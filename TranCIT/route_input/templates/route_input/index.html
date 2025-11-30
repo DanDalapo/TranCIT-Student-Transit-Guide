@@ -58,11 +58,12 @@
           <form id="routeForm" method="post" action="{% url 'plan_route' %}" novalidate>
             {% csrf_token %}
             <input type="hidden" name="form_type" value="plan_route">
-            
+
             <label for="{{ form.origin.id_for_label }}">Current Location</label>
             <input type="text" name="{{ form.origin.name }}" id="{{ form.origin.id_for_label }}"
                    placeholder="Your current location"
                    value="{{ get_origin_text|default_if_none:form.origin.value }}"
+                   {% if form.origin.field.required %}required{% endif %}
                    class="form-control">
 
             <div class="pin-controls" style="margin-top: 5px;">
@@ -85,6 +86,7 @@
               <input type="text" name="{{ form.destination.name }}" id="{{ form.destination.id_for_label }}"
                      placeholder="Enter your destination"
                      value="{{ get_destination_text|default_if_none:form.destination.value }}"
+                     {% if form.destination.field.required %}required{% endif %}
                      class="form-control">
               <button type="button" id="pinDestinationBtn" class="btn btn-sm">
                 <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
@@ -137,6 +139,13 @@
                 </div>
             </div>
 
+            <div id="alternativeRoutesContainer" style="display: none; margin-top: 15px; padding: 10px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px;">
+                <h5 style="margin: 0 0 8px 0; color: #2e7d32; font-size: 14px;">
+                    <i class="fa-solid fa-route"></i> Suggested Jeepneys
+                </h5>
+                <ul id="alternativeRoutesList" style="list-style: none; padding: 0; margin: 0; font-size: 13px; color: #333;">
+                </ul>
+            </div>
             <input type="hidden" name="fare" id="id_fare" value="{{ calculated_fare|default:'0.00' }}">
             <input type="hidden" name="distance_km" id="id_distance_km" value="{{ calculated_distance|default:'' }}">
             <input type="hidden" name="travel_time_minutes" id="id_travel_time_minutes" value="{{ calculated_time|default:'' }}">
@@ -203,6 +212,7 @@
     </aside>
 
     <main class="map-area">
+      <div id="map-loader" class="loader">Loading map...</div>
       <div id="map-container">{{ map|safe }}</div>
     </main>
 
@@ -238,6 +248,7 @@
                                     data-route-origin="{{ route.origin }}"
                                     data-route-destination="{{ route.destination }}"
                                     title="View"><i class="fa-solid fa-map"></i> View</button>
+                                    
                                 {% if user.is_authenticated %}
                                 <button type="button" class="btn btn-sm save-suggested-route" 
                                     data-route-id="{{ route.id }}"

@@ -21,6 +21,7 @@ from django.urls import reverse
 
 from .forms import RouteForm, JeepneySuggestionForm
 from .models import Route, SavedRoute, JEEPNEY_CODE_CHOICES
+from .jeepney_data import JEEPNEY_ROUTES, LANDMARKS
 
 
 # -----------------------------
@@ -780,6 +781,10 @@ def get_route_data(request):
         # Calculate the fare
         fare = calculate_fare(transport_type, distance_km, travel_minutes)
 
+        alternatives = []
+        if transport_type == 'Jeepney':
+            alternatives = find_best_jeepneys(origin_lat, origin_lon, dest_lat, dest_lon)
+
         # Get the raw path coordinates for the map
         path_coords = []
         if route_geojson and 'features' in route_geojson and route_geojson['features']:
@@ -792,13 +797,155 @@ def get_route_data(request):
             'distance_km': float(distance_km),
             'travel_time_minutes': float(travel_minutes),
             'fare': float(fare),
-            'path_coords': path_coords
+            'path_coords': path_coords,
+            'alternatives': alternatives
         })
 
     except Exception as e:
         logger.error(f"Error in get_route_data: {e}")
         return JsonResponse({'error': str(e)}, status=500)
+    
+# --- SMART SUGGESTION HELPERS ---
 
+def get_nearby_routes(point, threshold_km=0.8):
+    """
+    Returns a list of routes within threshold_km of a point.
+    Includes the distance to that point.
+    """
+    nearby_routes = []
+    for code, data in JEEPNEY_ROUTES.items():
+        best_stop = None
+        best_dist = float('inf')
+        best_coords = None
+
+        for landmark in data['path']:
+            coords = LANDMARKS.get(landmark)
+            if coords:
+                dist = geodesic(point, coords).km
+                if dist <= threshold_km and dist < best_dist:
+                    best_dist = dist
+                    best_stop = landmark
+                    best_coords = coords
+
+        if best_stop:
+            nearby_routes.append({
+                'code': code,
+                'stop': best_stop,
+                'coords': best_coords,
+                'dist_km': best_dist,
+                'data': data
+            })
+    return nearby_routes
+
+def find_best_jeepneys(origin_lat, origin_lon, dest_lat, dest_lon):
+    """
+    Finds Direct Routes AND 1-Transfer Routes.
+    """
+    suggestions = []
+    user_origin = (origin_lat, origin_lon)
+    user_dest = (dest_lat, dest_lon)
+
+    routes_at_origin = get_nearby_routes(user_origin)
+    routes_at_dest = get_nearby_routes(user_dest)
+    route_paths_map = {r['code']: r['data']['path'] for r in routes_at_origin + routes_at_dest}
+
+    # --- STRATEGY A: DIRECT ROUTES ---
+    for start_r in routes_at_origin:
+        for end_r in routes_at_dest:
+            if start_r['code'] == end_r['code']:
+                path = route_paths_map[start_r['code']]
+                try:
+                    start_idx = path.index(start_r['stop'])
+                    end_idx = path.index(end_r['stop'])
+                    if start_idx < end_idx:
+                        suggestions.append({
+                            'type': 'direct',
+                            'code': start_r['code'],
+                            'description': JEEPNEY_ROUTES[start_r['code']]['description'],
+                            'board_at': start_r['stop'],
+                            'alight_at': end_r['stop'],
+                            'walk_dist': f"{start_r['dist_km']*1000:.0f}m",
+                            'board_coords': start_r['coords'],
+                            'alight_coords': end_r['coords'],
+                            'origin_coords': user_origin,
+                            'dest_coords': user_dest
+                        })
+                except ValueError: continue
+
+    if len(suggestions) > 0: return suggestions[:3]
+
+    # --- STRATEGY B: 1-TRANSFER ROUTES ---
+    for start_r in routes_at_origin:
+        for end_r in routes_at_dest:
+            if start_r['code'] == end_r['code']: continue 
+
+            path_a = JEEPNEY_ROUTES[start_r['code']]['path']
+            path_b = JEEPNEY_ROUTES[end_r['code']]['path']
+            common_stops = set(path_a).intersection(set(path_b))
+
+            if common_stops:
+                valid_transfer = None
+                for stop in path_a:
+                    if stop in common_stops:
+                        try:
+                            idx_board_a = path_a.index(start_r['stop'])
+                            idx_transfer_a = path_a.index(stop)
+                            idx_transfer_b = path_b.index(stop)
+                            idx_drop_b = path_b.index(end_r['stop'])
+                            if idx_board_a < idx_transfer_a and idx_transfer_b < idx_drop_b:
+                                valid_transfer = stop
+                                break
+                        except ValueError: continue
+
+                if valid_transfer:
+                    suggestions.append({
+                        'type': 'transfer',
+                        'code_1': start_r['code'],
+                        'code_2': end_r['code'],
+                        'description': f"Transfer at {valid_transfer}",
+                        'board_at': start_r['stop'],
+                        'transfer_at': valid_transfer,
+                        'alight_at': end_r['stop'],
+                        'walk_dist': f"{start_r['dist_km']*1000:.0f}m",
+                        'board_coords': start_r['coords'],
+                        'transfer_coords': LANDMARKS.get(valid_transfer),
+                        'alight_coords': end_r['coords'],
+                        'origin_coords': user_origin,
+                        'dest_coords': user_dest
+                    })
+                    if len(suggestions) >= 3: return suggestions
+
+    return suggestions
+
+@require_POST
+def get_segment_path(request):
+    """Calculates a path segment (walking or driving) for visualization."""
+    try:
+        data = json.loads(request.body)
+        start = data.get('start')
+        end = data.get('end')
+        mode = data.get('mode')
+
+        if not start or not end:
+            return JsonResponse({'error': 'Missing coordinates'}, status=400)
+
+        profile = 'foot-walking' if mode == 'walking' else 'driving-car'
+
+        route_geojson = get_route_geojson_cached(
+            start_lat=start[0], start_lon=start[1],
+            end_lat=end[0], end_lon=end[1],
+            profile=profile
+        )
+
+        path_coords = []
+        if route_geojson and 'features' in route_geojson:
+             coords = route_geojson['features'][0]['geometry']['coordinates']
+             path_coords = [[c[1], c[0]] for c in coords]
+
+        return JsonResponse({'path_coords': path_coords})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
 def logout_view(request):
     logout(request)
     return redirect('/')
