@@ -11,6 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const calculatedTimeEl = $('#calculatedTime');
     const calculatedDistanceEl = $('#calculatedDistance');
     const calculatedTransportEl = $('#calculatedTransport');
+    const alternativeRoutesContainer = $('#alternativeRoutesContainer');
+    const alternativeRoutesList = $('#alternativeRoutesList');
     const fareInput = $('#id_fare');
     const distInput = $('#id_distance_km');
     const timeInput = $('#id_travel_time_minutes');
@@ -43,21 +45,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // State Variables
     let currentRouteLayer = null;   
     let currentActiveButton = null; 
+    let currentViewedBtn = null; // Track active view button for suggestions
 
     const csrftoken = document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1];
 
     const alertMsg = (msg) => typeof showNotification === 'function' ? showNotification(msg) : alert(msg);
     
     const qs = (params) => new URLSearchParams(params).toString();
-
-    const postJSON = async (url, data) => {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'X-CSRFToken': csrftoken },
-            body: data
-        });
-        return res.json();
-    };
 
     const updateURL = (params) => {
         const newUrl = `${window.location.pathname}?${qs(params)}`;
@@ -119,12 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
     pinOriginBtn?.addEventListener('click', () => sendPinCommand('origin'));
     pinDestinationBtn?.addEventListener('click', () => sendPinCommand('destination'));
 
+    // === Navigate Route Logic ===
     navigateBtn?.addEventListener('click', (e) => {
         e.preventDefault();
 
         if (!transportSelect.value) {
-            transportSelect.classList.add('input-error');
-            transportSelect.addEventListener('change', () => { transportSelect.classList.remove('input-error'); }, { once: true });
             return alertMsg('Please choose a transport type.');
         }
         if (!originLat.value || !destLat.value) return alertMsg('Please pin both origin and destination.');
@@ -163,15 +156,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
             drawNavigatedRoute(data.path_coords, routeData);
 
-            navigateBtn.innerHTML = '<i class="fa-solid fa-route"></i> Navigate Route';
-            toggleNavigateButton();
+            // --- HANDLE JEEPNEY SUGGESTIONS ---
+            if (data.alternatives && data.alternatives.length > 0) {
+                alternativeRoutesList.innerHTML = ''; 
+                currentViewedBtn = null; // Reset state
+
+                data.alternatives.forEach((jeep, index) => {
+                    const li = document.createElement('li');
+                    li.style.cssText = "margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e0e0;";
+                    
+                    const btnId = `btn-view-${index}`;
+                    const walkText = jeep.walk_dist ? `Walk ${jeep.walk_dist}` : 'Walk';
+
+                    let htmlContent = `
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">`;
+                    
+                    if (jeep.type === 'direct') {
+                        htmlContent += `
+                            <span style="font-weight: bold; background: #2e7d32; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px;">${jeep.code}</span>
+                            <span style="font-weight: 600; color: #333; font-size: 13px;">Direct Route</span>`;
+                    } else {
+                         htmlContent += `
+                            <div style="display:flex; gap:2px;">
+                                <span style="font-weight: bold; background: #2e7d32; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px;">${jeep.code_1}</span>
+                                <i class="fa-solid fa-arrow-right" style="font-size:10px; align-self:center; color:#888;"></i>
+                                <span style="font-weight: bold; background: #ff9800; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px;">${jeep.code_2}</span>
+                            </div>
+                            <span style="font-weight: 600; color: #333; font-size: 13px;">1 Transfer</span>`;
+                    }
+                    
+                    htmlContent += `</div></div>
+                        <div style="font-size: 12px; color: #555; padding-left: 4px; border-left: 2px solid #4CAF50; margin-left: 4px; margin-bottom: 8px;">
+                            <div><i class="fa-solid fa-person-walking"></i> ${walkText} to <strong>${jeep.board_at}</strong></div>`;
+                            
+                    if (jeep.type === 'transfer') {
+                         htmlContent += `
+                            <div style="margin-top:4px; color:#e65100;">
+                                <i class="fa-solid fa-shuffle"></i> Transfer at <strong>${jeep.transfer_at}</strong>
+                            </div>
+                            <div style="margin-top:4px;">
+                                <i class="fa-solid fa-bus"></i> Ride <strong>${jeep.code_2}</strong> to <strong>${jeep.alight_at}</strong>
+                            </div>`;
+                    } else {
+                         htmlContent += `<div><i class="fa-solid fa-file-arrow-down"></i> Get off at <strong>${jeep.alight_at}</strong></div>`;
+                    }
+
+                    // Added TYPE="BUTTON" to prevent refresh
+                    htmlContent += `</div>
+                        <button id="${btnId}" type="button" class="btn btn-sm" style="width: 100%; background-color: #2196F3; color: white; margin-top: 5px;">
+                            <i class="fa-solid fa-eye"></i> View Path
+                        </button>
+                    `;
+
+                    li.innerHTML = htmlContent;
+                    alternativeRoutesList.appendChild(li);
+
+                    // Add Click Listener
+                    const btn = li.querySelector(`#${btnId}`);
+                    if (btn) {
+                        btn.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleJeepneyRoute(jeep, btn);
+                        });
+                    }
+                });
+                
+                alternativeRoutesContainer.style.display = 'block';
+            } else {
+                alternativeRoutesContainer.style.display = 'none';
+            }
+
             if (saveMyRouteBtn) saveMyRouteBtn.disabled = false;
         })
         .catch(err => {
             console.error(err);
             alertMsg(`Error: ${err.message}`);
+        })
+        .finally(() => {
+            navigateBtn.disabled = false;
             navigateBtn.innerHTML = '<i class="fa-solid fa-route"></i> Navigate Route';
-            toggleNavigateButton();
+            document.body.style.cursor = 'default';
         });
     });
 
@@ -186,6 +252,17 @@ document.addEventListener('DOMContentLoaded', () => {
             currentActiveButton.innerHTML = `<i class="fa-solid fa-map"></i> ${originalText}`;
             currentActiveButton.classList.remove('viewing');
             currentActiveButton = null;
+        }
+        // Also clear suggested layer if it exists
+        if (window.activeRouteLayers && window.activeRouteLayers['suggestedJeepVisual']) {
+            foliumMap.removeLayer(window.activeRouteLayers['suggestedJeepVisual']);
+            delete window.activeRouteLayers['suggestedJeepVisual'];
+        }
+        if (currentViewedBtn) {
+            currentViewedBtn.innerHTML = '<i class="fa-solid fa-eye"></i> View Path';
+            currentViewedBtn.style.backgroundColor = '#2196F3';
+            currentViewedBtn.classList.remove('is-viewing');
+            currentViewedBtn = null;
         }
     }
 
@@ -248,13 +325,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleViewRouteClick(button) {
         if (!getMapObjects()) return alertMsg('Map is not ready.');
         
+        // Toggle OFF if clicking same button
         if (currentActiveButton === button) {
             clearCurrentRoute();
             return;
         }
-        if (currentActiveButton) {
-            clearCurrentRoute();
-        }
+        
+        // Reset OLD button
+        clearCurrentRoute();
 
         const ds = button.dataset;
         if (!ds.path || ds.path.length < 3) return alertMsg('Error: No path data.');
@@ -284,9 +362,113 @@ document.addEventListener('DOMContentLoaded', () => {
             const unviewText = button.classList.contains('view-saved-route') ? 'Unview' : 'Unview Route';
             button.innerHTML = `<i class="fa-solid fa-eye-slash"></i> ${unviewText}`;
             button.classList.add('viewing');
+            button.style.backgroundColor = '#f44336'; 
         } catch (err) {
             console.error(err);
             alertMsg('Error displaying route.');
+        }
+    }
+
+    // === Toggle Suggestion Logic ===
+    function toggleJeepneyRoute(jeep, btn) {
+        const routeId = 'suggestedJeepVisual';
+        
+        if (btn.classList.contains('is-viewing')) {
+            if (window.activeRouteLayers && window.activeRouteLayers[routeId]) {
+                foliumMap.removeLayer(window.activeRouteLayers[routeId]);
+                delete window.activeRouteLayers[routeId];
+            }
+            btn.innerHTML = '<i class="fa-solid fa-eye"></i> View Path';
+            btn.style.backgroundColor = '#2196F3';
+            btn.classList.remove('is-viewing');
+            currentViewedBtn = null;
+        } else {
+            if (currentViewedBtn && currentViewedBtn !== btn) {
+                currentViewedBtn.innerHTML = '<i class="fa-solid fa-eye"></i> View Path';
+                currentViewedBtn.style.backgroundColor = '#2196F3';
+                currentViewedBtn.classList.remove('is-viewing');
+            }
+            btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> Unview';
+            btn.style.backgroundColor = '#f44336';
+            btn.classList.add('is-viewing');
+            currentViewedBtn = btn;
+
+            visualizeJeepneyOption(jeep);
+        }
+    }
+
+    async function visualizeJeepneyOption(jeep) {
+        if (!getMapObjects()) return;
+        
+        const routeId = 'suggestedJeepVisual';
+        // Ensure global object exists
+        if (!window.activeRouteLayers) window.activeRouteLayers = {};
+
+        if (window.activeRouteLayers[routeId]) {
+            foliumMap.removeLayer(window.activeRouteLayers[routeId]);
+            delete window.activeRouteLayers[routeId];
+        }
+        
+        document.body.style.cursor = 'wait';
+
+        try {
+            const layers = [];
+
+            // 1. Walk Line
+            const walkRes = await fetch('/routes/get_segment_path/', {
+                method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({start: jeep.origin_coords, end: jeep.board_coords, mode: 'walking'})
+            });
+            const walkData = await walkRes.json();
+            if(walkData.path_coords) layers.push(L_Leaflet.polyline(walkData.path_coords, {color: '#2196F3', weight: 5, dashArray: '10,10'}));
+
+            if (jeep.type === 'direct') {
+                 const rideRes = await fetch('/routes/get_segment_path/', {
+                    method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                    body: JSON.stringify({start: jeep.board_coords, end: jeep.alight_coords, mode: 'driving'})
+                });
+                const rideData = await rideRes.json();
+                if(rideData.path_coords) layers.push(L_Leaflet.polyline(rideData.path_coords, {color: '#4CAF50', weight: 6}));
+                
+                layers.push(L_Leaflet.marker(jeep.board_coords).bindPopup(`<b>Board Here</b><br>${jeep.board_at}`));
+                layers.push(L_Leaflet.marker(jeep.alight_coords).bindPopup(`<b>Get Off</b><br>${jeep.alight_at}`));
+
+            } else if (jeep.type === 'transfer') {
+                // Leg 1
+                const r1 = await fetch('/routes/get_segment_path/', {
+                    method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                    body: JSON.stringify({start: jeep.board_coords, end: jeep.transfer_coords, mode: 'driving'})
+                });
+                const d1 = await r1.json();
+                if(d1.path_coords) layers.push(L_Leaflet.polyline(d1.path_coords, {color: '#2e7d32', weight: 6}));
+
+                // Leg 2
+                const r2 = await fetch('/routes/get_segment_path/', {
+                    method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                    body: JSON.stringify({start: jeep.transfer_coords, end: jeep.alight_coords, mode: 'driving'})
+                });
+                const d2 = await r2.json();
+                if(d2.path_coords) layers.push(L_Leaflet.polyline(d2.path_coords, {color: '#ff9800', weight: 6}));
+
+                const transferIcon = L_Leaflet.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="background-color: #ff9800; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white;"></div>`
+                });
+
+                layers.push(L_Leaflet.marker(jeep.board_coords).bindPopup(`<b>1. Ride ${jeep.code_1}</b>`));
+                layers.push(L_Leaflet.marker(jeep.transfer_coords, {icon: transferIcon}).bindPopup(`<b>2. Transfer</b>`));
+                layers.push(L_Leaflet.marker(jeep.alight_coords).bindPopup(`<b>3. Get Off</b>`));
+            }
+
+            const group = L_Leaflet.featureGroup(layers);
+            group.addTo(foliumMap);
+            foliumMap.fitBounds(group.getBounds().pad(0.2));
+            window.activeRouteLayers[routeId] = group;
+
+        } catch (err) {
+            console.error(err);
+        } finally {
+            document.body.style.cursor = 'default';
         }
     }
 
@@ -306,7 +488,36 @@ document.addEventListener('DOMContentLoaded', () => {
         else alertMsg('Error: ' + data.error);
     }
 
-    // === 7. TUTORIAL LOGIC (FIXED) ===
+    // === Fare Estimation ===
+    function updateFare() {
+        if (distInput && distInput.value && parseFloat(distInput.value) > 0) return; 
+        const type = transportSelect?.value;
+        if (!type) return;
+
+        calculatedFareEl.textContent = 'Php 0.00';
+        calculatedTimeEl.textContent = '-- min';
+        calculatedDistanceEl.textContent = '-- km';
+        calculatedTransportEl.textContent = '--';
+        fareInput.value = '0.00';
+        distInput.value = '';
+        timeInput.value = '';
+
+        if (!originInput.value.trim() || !destinationInput.value.trim()) return;
+
+        if (type === 'Jeepney') {
+            if (codeInput) codeInput.value = 'UNKNOWN';
+            fareInput.value = '13.00';
+            calculatedFareEl.textContent = 'Php ~13.00 (Fixed)';
+            calculatedTransportEl.textContent = 'Jeepney';
+            return;
+        }
+    }
+    
+    ['change', 'input'].forEach(evt => {
+        transportSelect?.addEventListener(evt, updateFare);
+    });
+
+    // === Tutorial Logic ===
     const tutorialStepsData = [
       { title: "Welcome to TranCIT! 🚍", text: "TranCIT helps you navigate Cebu City. Let's show you around!", highlight: null },
       { title: "Plan Your Route", text: "Enter details in the left panel.", highlight: ".sidebar" },
@@ -377,50 +588,105 @@ document.addEventListener('DOMContentLoaded', () => {
         tabSuggestions.addEventListener('click', () => handleTabSwitch('suggestions'));
     }
 
-    const panels = [panelSidebar, panelSuggestions];
-    panels.forEach(panel => {
-        const handle = panel ? panel.querySelector('.drag-handle') : null;
-        if (!handle) return;
-        let startY, startHeight;
-        handle.addEventListener('touchstart', (e) => {
-            startY = e.touches[0].clientY;
-            startHeight = parseInt(document.defaultView.getComputedStyle(panel).height, 10);
-            panel.classList.add('is-dragging'); 
-        }, { passive: false });
-        handle.addEventListener('touchmove', (e) => {
-            if (!startY) return;
-            e.preventDefault(); 
-            const currentY = e.touches[0].clientY;
-            const deltaY = startY - currentY; 
-            const newH = startHeight + deltaY;
-            if (newH > window.innerHeight * 0.20 && newH < window.innerHeight * 0.90) panel.style.height = `${newH}px`;
-        }, { passive: false });
-        handle.addEventListener('touchend', () => {
-            panel.classList.remove('is-dragging');
-            const h = parseInt(panel.style.height, 10);
-            if (h > window.innerHeight * 0.70) panel.style.height = '85vh';
-            else if (h < window.innerHeight * 0.30) panel.style.height = '25vh';
-            else panel.style.height = '45vh';
-            startY = null;
-        });
-        handle.addEventListener('mousedown', (e) => {
-            startY = e.clientY;
-            startHeight = parseInt(document.defaultView.getComputedStyle(panel).height, 10);
-            panel.classList.add('is-dragging');
-            const onMouseMove = (me) => {
-                const delta = startY - me.clientY;
-                const newH = startHeight + delta;
-                if(newH > 100 && newH < window.innerHeight - 50) panel.style.height = `${newH}px`;
-            };
-            const onMouseUp = () => {
-                panel.classList.remove('is-dragging');
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-            };
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-        });
+    // === Geolocation Detection (FIXED) ===
+    detectBtn?.addEventListener('click', () => {
+        if (!navigator.geolocation) return alertMsg('Geolocation not supported.');
+        originInput.value = 'Detecting location...';
+
+        navigator.geolocation.getCurrentPosition(async pos => {
+            const { latitude: lat, longitude: lon } = pos.coords;
+            originLat.value = lat;
+            originLon.value = lon;
+            toggleNavigateButton();
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+                const data = await res.json();
+                const addr = data?.display_name || `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
+                originInput.value = addr;
+
+                // --- ADDED: Send PIN Command to Map ---
+                if (mapIframe && mapIframe.contentWindow) {
+                    mapIframe.contentWindow.postMessage({
+                        type: 'DRAW_PIN',
+                        mode: 'origin',
+                        lat: lat,
+                        lng: lon,
+                        label: addr
+                    }, '*');
+                }
+
+            } catch {
+                alertMsg('Unable to retrieve address, but location saved.');
+            }
+        }, err => {
+            console.error(err);
+            alertMsg('Location detection failed.');
+        }, { enableHighAccuracy: true, timeout: 7000 });
     });
 
-    resetFormBtn?.addEventListener('click', () => window.location.href = '/routes/');
+    let debounce;
+    destinationInput?.addEventListener('input', () => {
+        clearTimeout(debounce);
+        const query = destinationInput.value.trim();
+        if (query.length < 3) return (suggestionsContainer.style.display = 'none');
+
+        debounce = setTimeout(async () => {
+            try {
+                const viewbox = '123.70,10.55,124.10,10.10';
+                const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&viewbox=${viewbox}&bounded=1&countrycodes=ph`;
+                const res = await fetch(url);
+                const results = await res.json();
+
+                suggestionsContainer.innerHTML = '';
+                if (!results.length) {
+                    suggestionsContainer.innerHTML = '<div class="destination-suggestions-item">No results found</div>';
+                    return;
+                }
+
+                results.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'destination-suggestions-item';
+                    const cleanName = item.display_name.replace(', Central Visayas, Philippines', '').replace(', Philippines', '');
+                    div.textContent = cleanName;
+
+                    div.addEventListener('click', () => {
+                        destinationInput.value = cleanName;
+                        destLat.value = item.lat;
+                        destLon.value = item.lon;
+                        suggestionsContainer.style.display = 'none';
+                        toggleNavigateButton();
+
+                        if (mapIframe && mapIframe.contentWindow) {
+                            mapIframe.contentWindow.postMessage({
+                                type: 'DRAW_PIN', mode: 'destination', lat: item.lat, lng: item.lon, label: cleanName
+                            }, '*');
+                        }
+                    });
+                    suggestionsContainer.appendChild(div);
+                });
+                suggestionsContainer.style.display = 'block';
+            } catch (error) {
+                console.error("Search error:", error);
+            }
+        }, 400);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!suggestionsContainer.contains(e.target) && e.target !== destinationInput)
+            suggestionsContainer.style.display = 'none';
+    });
+
+    // === Reset Logic ===
+    resetFormBtn?.addEventListener('click', () => {
+        if (alternativeRoutesContainer) alternativeRoutesContainer.style.display = 'none';
+        window.location.href = '/routes/';
+    });
+
+    if (saveMyRouteBtn) {
+        saveMyRouteBtn.addEventListener('click', () => {
+            const formData = new FormData(routeForm);
+            performSave('/routes/save_current_route/', formData);
+        });
+    }
 });
