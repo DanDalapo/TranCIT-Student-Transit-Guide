@@ -29,6 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const navigateBtn = $('#navigateBtn');
     const resetFormBtn = $('#resetFormBtn');
     
+    // --- MODIFICATION: Added selector for the new swap button --- //
+    const swapLocationsBtn = $('#swapLocationsBtn');
+
     const helpBtn = $('#helpBtn');
     const tutorialOverlay = $('#tutorialOverlay');
     const tutorialTitle = $('#tutorialTitle');
@@ -677,10 +680,73 @@ document.addEventListener('DOMContentLoaded', () => {
             suggestionsContainer.style.display = 'none';
     });
 
-    // === Reset Logic ===
+    // --- MODIFICATION: Rewritten Reset Logic --- //
     resetFormBtn?.addEventListener('click', () => {
-        if (alternativeRoutesContainer) alternativeRoutesContainer.style.display = 'none';
-        window.location.href = '/routes/';
+        // 1. Clear form inputs
+        routeForm.reset();
+        originLat.value = '';
+        originLon.value = '';
+        destLat.value = '';
+        destLon.value = '';
+
+        // 2. Reset the results display
+        calculatedFareEl.textContent = 'Php 0.00';
+        calculatedTimeEl.textContent = '-- min';
+        calculatedDistanceEl.textContent = '-- km';
+        calculatedTransportEl.textContent = '--';
+
+        // 3. Hide alternative routes
+        alternativeRoutesContainer.style.display = 'none';
+        alternativeRoutesList.innerHTML = '';
+        
+        // 4. Clear any routes on the map
+        clearCurrentRoute();
+        if (getMapObjects()) {
+            mapIframe.contentWindow.postMessage({ type: 'CLEAR_PINS' }, '*');
+        }
+
+        // 5. Disable buttons
+        toggleNavigateButton();
+        if (saveMyRouteBtn) saveMyRouteBtn.disabled = true;
+
+        // 6. Clear URL parameters
+        window.history.replaceState({}, '', window.location.pathname);
+    });
+    
+    // --- MODIFICATION: Added Swap Logic --- //
+    swapLocationsBtn?.addEventListener('click', () => {
+        // Swap text values
+        const tempOriginText = originInput.value;
+        originInput.value = destinationInput.value;
+        destinationInput.value = tempOriginText;
+
+        // Swap latitude values
+        const tempOriginLat = originLat.value;
+        originLat.value = destLat.value;
+        destLat.value = tempOriginLat;
+
+        // Swap longitude values
+        const tempOriginLon = originLon.value;
+        originLon.value = destLon.value;
+        destLon.value = tempOriginLon;
+        
+        // Update map pins if map is ready
+        if (getMapObjects()) {
+            // Clear old pins first
+            mapIframe.contentWindow.postMessage({ type: 'CLEAR_PINS' }, '*');
+
+            // Draw new pins
+            if (originLat.value && originLon.value) {
+                mapIframe.contentWindow.postMessage({
+                    type: 'DRAW_PIN', mode: 'origin', lat: originLat.value, lng: originLon.value, label: originInput.value
+                }, '*');
+            }
+            if (destLat.value && destLon.value) {
+                mapIframe.contentWindow.postMessage({
+                    type: 'DRAW_PIN', mode: 'destination', lat: destLat.value, lng: destLon.value, label: destinationInput.value
+                }, '*');
+            }
+        }
     });
 
     if (saveMyRouteBtn) {

@@ -1,3 +1,5 @@
+# --- START OF FILE: route_input/views.py ---
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.cache import cache
 from django.conf import settings
@@ -16,6 +18,10 @@ import openrouteservice
 import json
 import logging
 import folium
+
+# --- (1/2) MODIFICATION: IMPORT ceil ---
+from math import ceil
+# --- END MODIFICATION ---
 
 from django.urls import reverse
 
@@ -181,7 +187,11 @@ def calculate_fare(transport_type, distance_km, travel_time_minutes):
                 # Fare for first 8km + fare for remaining distance
                 fare = base + (Decimal('7') * Decimal('16.00')) + (distance - 8) * Decimal('20.00')
 
-        return Decimal(f"{fare:.2f}")
+        # --- (2/2) MODIFICATION: Round the final fare UP ---
+        # Convert the Decimal to a float, apply ceiling to round up, then format back to a Decimal
+        final_fare = ceil(float(fare))
+        return Decimal(f"{final_fare:.2f}")
+        # --- END MODIFICATION ---
 
     except Exception:
         logger.exception("Fare calculation failed")

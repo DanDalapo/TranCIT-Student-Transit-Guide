@@ -166,3 +166,33 @@
     overflow-y: auto;
   }
 }
+
+/* --- MODIFICATION: Added styles for the new swap button --- */
+.location-swap-wrapper {
+    position: relative;
+}
+
+.swap-btn {
+    position: absolute;
+    top: 52%; /* Adjust as needed */
+    right: 10px;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    background: #f0f0f0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    color: #555;
+    transition: all 0.2s ease;
+}
+
+.swap-btn:hover {
+    background: #4CAF50;
+    color: white;
+    transform: translateY(-50%) rotate(180deg);
+}
