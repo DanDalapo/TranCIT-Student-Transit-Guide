@@ -59,18 +59,40 @@
             {% csrf_token %}
             <input type="hidden" name="form_type" value="plan_route">
 
-            <label for="{{ form.origin.id_for_label }}">Current Location</label>
-            <input type="text" name="{{ form.origin.name }}" id="{{ form.origin.id_for_label }}"
-                   placeholder="Your current location"
-                   value="{{ get_origin_text|default_if_none:form.origin.value }}"
-                   {% if form.origin.field.required %}required{% endif %}
-                   class="form-control">
+            <!-- MODIFICATION START: Added a wrapper for positioning the swap button -->
+            <div class="location-swap-wrapper">
+                <label for="{{ form.origin.id_for_label }}">Current Location</label>
+                <input type="text" name="{{ form.origin.name }}" id="{{ form.origin.id_for_label }}"
+                       placeholder="Your current location"
+                       value="{{ get_origin_text|default_if_none:form.origin.value }}"
+                       {% if form.origin.field.required %}required{% endif %}
+                       class="form-control">
 
-            <div class="pin-controls" style="margin-top: 5px;">
-              <button type="button" id="pinOriginBtn" class="btn btn-sm">
-                <i class="fa-solid fa-map-pin"></i> Pin Origin on Map
-              </button>
+                <div class="pin-controls" style="margin-top: 5px;">
+                    <button type="button" id="pinOriginBtn" class="btn btn-sm">
+                        <i class="fa-solid fa-map-pin"></i> Pin Origin on Map
+                    </button>
+                </div>
+
+                <!-- This is the new Swap Button -->
+                <button type="button" id="swapLocationsBtn" class="swap-btn" title="Swap Origin and Destination">
+                    <i class="fa-solid fa-arrows-up-down"></i>
+                </button>
+
+                <label for="{{ form.destination.id_for_label }}">Where do you want to go?</label>
+                <div class="destination-input-group">
+                    <input type="text" name="{{ form.destination.name }}" id="{{ form.destination.id_for_label }}"
+                           placeholder="Enter your destination"
+                           value="{{ get_destination_text|default_if_none:form.destination.value }}"
+                           {% if form.destination.field.required %}required{% endif %}
+                           class="form-control">
+                    <button type="button" id="pinDestinationBtn" class="btn btn-sm">
+                        <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
+                    </button>
+                    <div id="destinationSuggestions" class="destination-suggestions" style="display: none;"></div>
+                </div>
             </div>
+            <!-- MODIFICATION END -->
 
             <div class="divider">──────────  or  ──────────</div>
             <button type="button" id="detectLocationBtn" class="btn btn-sm">
@@ -81,18 +103,6 @@
               {% if form.origin.errors %}{{ form.origin.errors }}{% endif %}
             </span>
 
-            <label for="{{ form.destination.id_for_label }}">Where do you want to go?</label>
-            <div class="destination-input-group">
-              <input type="text" name="{{ form.destination.name }}" id="{{ form.destination.id_for_label }}"
-                     placeholder="Enter your destination"
-                     value="{{ get_destination_text|default_if_none:form.destination.value }}"
-                     {% if form.destination.field.required %}required{% endif %}
-                     class="form-control">
-              <button type="button" id="pinDestinationBtn" class="btn btn-sm">
-                <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
-              </button>
-              <div id="destinationSuggestions" class="destination-suggestions" style="display: none;"></div>
-            </div>
             <span class="error" id="error-destination">
               {% if form.destination.errors %}{{ form.destination.errors }}{% endif %}
             </span>
