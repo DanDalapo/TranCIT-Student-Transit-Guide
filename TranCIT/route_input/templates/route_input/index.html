@@ -33,7 +33,13 @@
     </a>
     
     <div class="search-box">
-      <input type="text" placeholder="Search..">
+      <div class="search-input-wrapper">
+        <input type="text" id="topNavSearch" placeholder="Search places..." autocomplete="off">
+        <button id="clearSearchBtn" class="clear-search-btn" style="display: none;">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+      <div id="topNavSuggestions" class="search-suggestions"></div>
     </div>
     
     <div class="nav-actions">

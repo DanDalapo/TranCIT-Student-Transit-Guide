@@ -153,4 +153,31 @@ class SavedRoute(models.Model):
                 return []
         return []
 
+class Landmark(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+
+    def __str__(self):
+        return self.name
+    
+class JeepneyRoute(models.Model):
+    code = models.CharField(max_length=10, unique=True)
+    description = models.TextField(blank=True)
+    stops = models.ManyToManyField(Landmark, through='RouteStop', related_name='routes')
+
+    def __str__(self):
+        return self.code
+    
+class RouteStop(models.Model):
+    route = models.ForeignKey(JeepneyRoute, on_delete=models.CASCADE)
+    landmark = models.ForeignKey(Landmark, on_delete=models.CASCADE)
+    order = models.PositiveIntegerField() # To keep the path sequence correct
+
+    class Meta:
+        ordering = ['order']
+        unique_together = ('route', 'order') # Prevent duplicate order numbers for same route
+
+    def __str__(self):
+        return f"{self.route.code} - {self.order}: {self.landmark.name}"
 # --- END OF FILE route_input/models.py ---
