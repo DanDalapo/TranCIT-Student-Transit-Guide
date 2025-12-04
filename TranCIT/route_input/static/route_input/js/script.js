@@ -28,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const pinDestinationBtn = $('#pinDestinationBtn');
     const navigateBtn = $('#navigateBtn');
     const resetFormBtn = $('#resetFormBtn');
+    const topNavSearch = $('#topNavSearch');
+    const topNavSuggestions = $('#topNavSuggestions');
+    const clearSearchBtn = $('#clearSearchBtn');
     
     // --- MODIFICATION: Added selector for the new swap button --- //
     const swapLocationsBtn = $('#swapLocationsBtn');
@@ -322,6 +325,96 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             if (viewButton) handleViewRouteClick(viewButton);
+        });
+    }
+
+    if (topNavSearch) {
+        let searchDebounce;
+
+        // 1. Handle Input (Auto-suggestions)
+        topNavSearch.addEventListener('input', () => {
+            const query = topNavSearch.value.trim();
+            
+            // Toggle clear button
+            clearSearchBtn.style.display = query.length > 0 ? 'block' : 'none';
+
+            clearTimeout(searchDebounce);
+            if (query.length < 3) {
+                topNavSuggestions.style.display = 'none';
+                return;
+            }
+
+            searchDebounce = setTimeout(async () => {
+                try {
+                    // Limit search to Philippines/Cebu area for better relevance
+                    const viewbox = '123.70,10.55,124.10,10.10'; 
+                    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&viewbox=${viewbox}&bounded=0&countrycodes=ph`;
+                    
+                    const res = await fetch(url);
+                    const results = await res.json();
+
+                    topNavSuggestions.innerHTML = '';
+                    
+                    if (!results.length) {
+                        topNavSuggestions.style.display = 'none';
+                        return;
+                    }
+
+                    results.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'search-suggestion-item';
+                        // Clean up the display name
+                        const cleanName = item.display_name.split(',')[0]; 
+                        
+                        div.innerHTML = `<i class="fa-solid fa-location-dot"></i> <span>${item.display_name}</span>`;
+
+                        div.addEventListener('click', () => {
+                            // 2. On Selection: Pin to Map
+                            topNavSearch.value = cleanName;
+                            topNavSuggestions.style.display = 'none';
+                            
+                            if (getMapObjects()) {
+                                mapIframe.contentWindow.postMessage({
+                                    type: 'DRAW_PIN',
+                                    mode: 'search', // Uses the new mode we added to views.py
+                                    lat: parseFloat(item.lat),
+                                    lng: parseFloat(item.lon),
+                                    label: cleanName
+                                }, '*');
+                            } else {
+                                alertMsg("Map is not ready yet.");
+                            }
+                        });
+                        topNavSuggestions.appendChild(div);
+                    });
+                    
+                    topNavSuggestions.style.display = 'block';
+
+                } catch (error) {
+                    console.error("Search error:", error);
+                }
+            }, 400);
+        });
+
+        // 3. Clear Button Logic
+        clearSearchBtn.addEventListener('click', () => {
+            topNavSearch.value = '';
+            clearSearchBtn.style.display = 'none';
+            topNavSuggestions.style.display = 'none';
+            
+            // Remove the pin from the map
+            if (getMapObjects()) {
+                mapIframe.contentWindow.postMessage({
+                    type: 'CLEAR_PINS',
+                    mode: 'search'
+                }, '*');
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!topNavSearch.contains(e.target) && !topNavSuggestions.contains(e.target)) {
+                topNavSuggestions.style.display = 'none';
+            }
         });
     }
 
