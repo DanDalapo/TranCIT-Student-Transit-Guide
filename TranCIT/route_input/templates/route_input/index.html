@@ -89,6 +89,11 @@
                         <i class="fa-solid fa-arrows-up-down"></i>
                     </button>
 
+                    <div class="divider">──────────  or  ──────────</div>
+                    <button type="button" id="detectLocationBtn" class="btn btn-sm">
+                      <i class="fa-solid fa-location-crosshairs"></i> Detect My Location
+                    </button>
+
                     <label for="{{ form.destination.id_for_label }}">Where do you want to go?</label>
                     <div class="destination-input-group">
                         <input type="text" name="{{ form.destination.name }}" id="{{ form.destination.id_for_label }}"
@@ -102,11 +107,6 @@
                         <div id="destinationSuggestions" class="destination-suggestions" style="display: none;"></div>
                     </div>
                 </div>
-
-                <div class="divider">──────────  or  ──────────</div>
-                <button type="button" id="detectLocationBtn" class="btn btn-sm">
-                  <i class="fa-solid fa-location-crosshairs"></i> Detect My Location
-                </button>
                 
                 <span class="error" id="error-origin">
                   {% if form.origin.errors %}{{ form.origin.errors }}{% endif %}
