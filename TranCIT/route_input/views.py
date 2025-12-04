@@ -26,7 +26,7 @@ from math import ceil
 from django.urls import reverse
 
 from .forms import RouteForm, JeepneySuggestionForm
-from .models import Route, SavedRoute, Landmark, JeepneyRoute, RouteStop
+from .models import Route, SavedRoute, Landmark, JeepneyRoute, RouteStop, FareConfig
 from .jeepney_data import JEEPNEY_ROUTES, LANDMARKS
 
 
@@ -144,59 +144,67 @@ def calculate_distance_and_time(start_lat, start_lon, end_lat, end_lon):
 
 def calculate_fare(transport_type, distance_km, travel_time_minutes):
     """
-    Calculates the estimated fare based on the transport type and distance,
-    using the logic provided for Cebu's transport system.
+    Calculates fare using dynamic FareConfig settings from the database.
     """
     if distance_km is None:
         return None
     
     try:
-        distance = Decimal(distance_km)
-        # Use a default of 0 for travel time if not provided
-        waiting_time = Decimal(travel_time_minutes or 0)
-        fare = Decimal('0.00')
+        # Get config from DB (or return None if not set)
+        config = FareConfig.objects.filter(transport_type=transport_type).first()
+        if not config:
+            logger.warning(f"No FareConfig found for {transport_type}")
+            return None
 
-        if transport_type == 'Jeepney':
-            base = Decimal('13.00') # 
-            rate = Decimal('1.80') # 
-            if distance <= 4:
-                fare = base
-            else:
-                fare = base + (distance - 4) * rate
+        dist = Decimal(distance_km)
+        time = Decimal(travel_time_minutes or 0)
         
-        elif transport_type == 'Bus':
-            base = Decimal('15.00') # 
-            rate = Decimal('1.80') # 
-            if distance <= 4:
-                fare = base
-            else:
-                fare = base + (distance - 4) * rate
+        fare = config.base_fare
 
+        # --- JEEPNEY / BUS LOGIC ---
+        # Base fare covers first X km, then add rate for extra km
+        if transport_type in ['Jeepney', 'Bus']:
+            if dist > config.initial_distance_km:
+                fare += (dist - config.initial_distance_km) * config.extra_km_rate
+
+        # --- TAXI LOGIC ---
+        # Base + (Dist * Rate) + (Time * Rate)
         elif transport_type == 'Taxi':
-            base = Decimal('50.00') # 
-            rate_km = Decimal('13.50') # 
-            rate_waiting = Decimal('2.00') # 
-            fare = base + (distance * rate_km) + (waiting_time * rate_waiting)
+            # Taxi base usually strictly start-down, so we charge for ALL km or 
+            # subtract initial if that's how your local taxis work. 
+            # Based on your previous code: Base + (Dist * Rate)
+            fare += (dist * config.extra_km_rate)
+            
+            if config.waiting_time_rate_per_min:
+                fare += (time * config.waiting_time_rate_per_min)
 
+        # --- MOTORCYCLE LOGIC ---
+        # Complex tiered pricing
         elif transport_type == 'Motorcycle':
-            # No official PDF provided, using existing logic from your code
-            base = Decimal('20.00')
-            if distance <= 1:
-                fare = base
-            elif distance <= 8:
-                fare = base + (distance - 1) * Decimal('16.00')
+            # Phase 1: Within initial distance (e.g., 1km) -> Base Fare only
+            if dist <= config.initial_distance_km:
+                fare = config.base_fare
+            
+            # Phase 2: Between initial and long distance (e.g., 1km - 8km)
+            elif dist <= (config.long_distance_threshold_km or 9999):
+                # Add standard rate for distance beyond initial
+                fare += (dist - config.initial_distance_km) * config.extra_km_rate
+            
+            # Phase 3: Long distance (e.g., > 8km)
             else:
-                # Fare for first 8km + fare for remaining distance
-                fare = base + (Decimal('7') * Decimal('16.00')) + (distance - 8) * Decimal('20.00')
+                # Calculate cost for the "middle" leg (e.g. 1km to 8km)
+                middle_distance = config.long_distance_threshold_km - config.initial_distance_km
+                fare += middle_distance * config.extra_km_rate
+                
+                # Calculate cost for the "long" leg (e.g. > 8km)
+                fare += (dist - config.long_distance_threshold_km) * config.long_distance_rate
 
-        # --- (2/2) MODIFICATION: Round the final fare UP ---
-        # Convert the Decimal to a float, apply ceiling to round up, then format back to a Decimal
+        # Round UP to nearest centavo/peso
         final_fare = ceil(float(fare))
         return Decimal(f"{final_fare:.2f}")
-        # --- END MODIFICATION ---
 
-    except Exception:
-        logger.exception("Fare calculation failed")
+    except Exception as e:
+        logger.exception(f"Fare calculation failed for {transport_type}: {e}")
         return None
 
 
@@ -230,7 +238,6 @@ def get_route_and_calculate(start_lat, start_lon, end_lat, end_lon, transport_ty
         'Taxi': 'driving-car',
         'Motorcycle': 'driving-car',
         'Jeepney': 'driving-car',
-        'Bus': 'driving-car',
     }
     profile = profile_map.get(transport_type, 'driving-car')
     route_data = get_route_geojson_cached(start_lat, start_lon, end_lat, end_lon, profile=profile)
@@ -378,9 +385,9 @@ function attachHandlers() {
 
   var originIcon = L.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'blue' });
   var destIcon = L.AwesomeMarkers.icon({ icon: 'circle', prefix: 'fa', markerColor: 'red' });
-  // NEW: Icon for Search results
   var searchIcon = L.AwesomeMarkers.icon({ icon: 'map-pin', prefix: 'fa', markerColor: 'green' });
 
+  // 1. Handle Messages from Parent (Detect Location / Search)
   window.addEventListener("message", function(event) {
     const data = event.data;
     
@@ -394,11 +401,11 @@ function attachHandlers() {
 
         let markerKey, iconToUse;
 
-        // Determine Marker Type
-        if (mode === "origin") {
+        // --- UPDATED LOGIC HERE ---
+        if (mode === "origin" || mode === "suggest_origin") {
             markerKey = "originMarker";
             iconToUse = originIcon;
-        } else if (mode === "destination") {
+        } else if (mode === "destination" || mode === "suggest_destination") {
             markerKey = "destinationMarker";
             iconToUse = destIcon;
         } else if (mode === "search") {
@@ -406,30 +413,24 @@ function attachHandlers() {
             iconToUse = searchIcon;
         }
 
-        // Remove existing marker of this type
         if (window[markerKey]) {
             try { window.map.removeLayer(window[markerKey]); } catch {}
         }
         
-        // Add new marker
         window[markerKey] = L.marker([lat, lng], {icon: iconToUse}).addTo(window.map)
             .bindPopup(label || (mode + ": " + lat.toFixed(5) + ", " + lng.toFixed(5)))
             .openPopup();
         
-        // Pan map to search result
         window.map.setView([lat, lng], 16);
-
         window.mapClickMode = null; 
     }
 
     if (data?.type === "CLEAR_PINS") {
-        // If specific mode provided, only clear that. Otherwise clear all.
         const mode = data.mode; 
-        
-        if (!mode || mode === "origin") {
+        if (!mode || mode.includes("origin")) {
             if (window["originMarker"]) try { window.map.removeLayer(window["originMarker"]); } catch {}
         }
-        if (!mode || mode === "destination") {
+        if (!mode || mode.includes("destination")) {
             if (window["destinationMarker"]) try { window.map.removeLayer(window["destinationMarker"]); } catch {}
         }
         if (!mode || mode === "search") {
@@ -438,30 +439,66 @@ function attachHandlers() {
     }
   });
 
+  // 2. Handle Clicks on Map (Pinning)
   window.map.on("click", function(e) {
     if (!window.mapClickMode) return;
     const { lat, lng } = e.latlng;
 
-    const markerKey = window.mapClickMode === "origin" ? "originMarker" : "destinationMarker";
+    let markerKey, iconToUse, latInputId, lonInputId, textInputSelector;
+
+    // --- UPDATED LOGIC HERE ---
+    if (window.mapClickMode === "origin") {
+        markerKey = "originMarker";
+        iconToUse = originIcon;
+        latInputId = "id_origin_latitude";
+        lonInputId = "id_origin_longitude";
+        textInputSelector = "input[name='origin']"; 
+    } 
+    else if (window.mapClickMode === "destination") {
+        markerKey = "destinationMarker";
+        iconToUse = destIcon;
+        latInputId = "id_destination_latitude";
+        lonInputId = "id_destination_longitude";
+        textInputSelector = "input[name='destination']"; 
+    }
+    // New Suggestion Modes
+    else if (window.mapClickMode === "suggest_origin") {
+        markerKey = "originMarker";
+        iconToUse = originIcon;
+        latInputId = "suggest_origin_latitude";
+        lonInputId = "suggest_origin_longitude";
+        textInputSelector = "#suggest_origin"; 
+    }
+    else if (window.mapClickMode === "suggest_destination") {
+        markerKey = "destinationMarker";
+        iconToUse = destIcon;
+        latInputId = "suggest_destination_latitude";
+        lonInputId = "suggest_destination_longitude";
+        textInputSelector = "#suggest_destination"; 
+    }
 
     if (window[markerKey]) {
       try { window.map.removeLayer(window[markerKey]); } catch {}
     }
 
-    var iconToUse = (window.mapClickMode === "origin") ? originIcon : destIcon;
     window[markerKey] = L.marker([lat, lng], {icon: iconToUse}).addTo(window.map);
 
-    const latInput = parent.document.getElementById("id_" + window.mapClickMode + "_latitude");
-    const lonInput = parent.document.getElementById("id_" + window.mapClickMode + "_longitude");
-    const textInput = parent.document.querySelector("input[name='" + window.mapClickMode + "']");
+    const latInput = parent.document.getElementById(latInputId);
+    const lonInput = parent.document.getElementById(lonInputId);
+    const textInput = parent.document.querySelector(textInputSelector);
     
     if (latInput && lonInput) {
       latInput.value = lat.toFixed(6);
       lonInput.value = lng.toFixed(6);
+      
       fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=" + lat + "&lon=" + lng)
         .then(r => r.json())
-        .then(d => { textInput.value = d.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`; })
-        .catch(() => { textInput.value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`; });
+        .then(d => { 
+            if(textInput) textInput.value = d.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`; 
+        })
+        .catch(() => { 
+            if(textInput) textInput.value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`; 
+        });
     }
 
     window.mapClickMode = null;
@@ -498,10 +535,7 @@ initFoliumMap();
         'calculated_time': calculated_time,
     }
 
-    if request.session.get('newbie_mode', False):
-        return render(request, 'route_input/newbie_index.html', context)
-    else:
-        return render(request, 'route_input/index.html', context)
+    return render(request, 'route_input/index.html', context)
 
 
 def _get_coords_from_request_data(address_text):
@@ -925,6 +959,7 @@ def find_best_jeepneys(origin_lat, origin_lon, dest_lat, dest_lon):
                             'board_at': start_r['stop'],
                             'alight_at': end_r['stop'],
                             'walk_dist': f"{start_r['dist_km']*1000:.0f}m",
+                            'walk_dist_dest': f"{end_r['dist_km']*1000:.0f}m",
                             'board_coords': start_r['coords'],
                             'alight_coords': end_r['coords'],
                             'origin_coords': user_origin,
@@ -979,6 +1014,7 @@ def find_best_jeepneys(origin_lat, origin_lon, dest_lat, dest_lon):
                             'transfer_at': valid_transfer,
                             'alight_at': end_r['stop'],
                             'walk_dist': f"{start_r['dist_km']*1000:.0f}m",
+                            'walk_dist_dest': f"{end_r['dist_km']*1000:.0f}m",
                             'board_coords': start_r['coords'],
                             'transfer_coords': landmark_coords_cache[valid_transfer],
                             'alight_coords': end_r['coords'],
@@ -989,6 +1025,82 @@ def find_best_jeepneys(origin_lat, origin_lon, dest_lat, dest_lon):
 
     return suggestions
 
+@require_GET
+def get_jeep_codes(request):
+    """Returns list of available jeepney codes from the database."""
+    # Query the DB instead of the hardcoded list
+    codes = JeepneyRoute.objects.values_list('code', flat=True).order_by('code')
+    return JsonResponse({'codes': list(codes)})
+
+@require_GET
+def get_jeepney_route_details(request):
+    """Returns the full path sequence for a specific jeepney code, snapped to roads."""
+    code = request.GET.get('code')
+    if not code:
+        return JsonResponse({'error': 'Code required'}, status=400)
+    
+    try:
+        route = JeepneyRoute.objects.get(code=code)
+        # Get all stops in correct order
+        stops = RouteStop.objects.filter(route=route).select_related('landmark').order_by('order')
+        
+        # 1. Prepare Stops for Markers (Frontend)
+        stops_data = []
+        coords_for_ors = [] # ORS expects [lon, lat]
+        
+        for stop in stops:
+            lat = float(stop.landmark.latitude)
+            lng = float(stop.landmark.longitude)
+            stops_data.append({
+                'lat': lat,
+                'lng': lng,
+                'name': stop.landmark.name
+            })
+            coords_for_ors.append([lng, lat]) 
+
+        # 2. Get Actual Road Path from ORS (or Cache)
+        # This asks ORS to route from Stop 1 -> Stop 2 -> ... -> Last Stop
+        route_geometry = [] # This will hold the detailed road points
+        
+        # Try to get from cache first to save API calls
+        cache_key = f"jeep_route_poly:{code}"
+        cached_geo = cache.get(cache_key)
+
+        if cached_geo:
+            route_geometry = cached_geo
+        elif ors_client and len(coords_for_ors) >= 2:
+            try:
+                response = ors_client.directions(
+                    coordinates=coords_for_ors,
+                    profile='driving-car',
+                    format='geojson'
+                )
+                # Extract coordinates from GeoJSON
+                if response and 'features' in response:
+                    raw_coords = response['features'][0]['geometry']['coordinates']
+                    # Swap [lon, lat] -> [lat, lon] for Leaflet
+                    route_geometry = [[c[1], c[0]] for c in raw_coords]
+                    
+                    # Cache the result for 24 hours (Jeep routes don't change often)
+                    cache.set(cache_key, route_geometry, timeout=86400)
+            except Exception as e:
+                logger.error(f"ORS Error for route {code}: {e}")
+                # Fallback: If ORS fails, just use the straight lines
+                route_geometry = [[s['lat'], s['lng']] for s in stops_data]
+        else:
+            # Fallback if no ORS client or not enough points
+            route_geometry = [[s['lat'], s['lng']] for s in stops_data]
+
+        return JsonResponse({
+            'code': route.code,
+            'description': route.description,
+            'stops': stops_data,       # List of landmarks (for Pin markers)
+            'geometry': route_geometry # Detailed road path (for the Orange Line)
+        })
+
+    except JeepneyRoute.DoesNotExist:
+        return JsonResponse({'error': 'Route not found'}, status=404)
+       
 @require_POST
 def get_segment_path(request):
     """Calculates a path segment (walking or driving) for visualization."""

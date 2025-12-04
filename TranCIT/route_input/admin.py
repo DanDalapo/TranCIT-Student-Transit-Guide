@@ -1,7 +1,7 @@
 
 
 from django.contrib import admin
-from .models import Route, SavedRoute, Landmark, JeepneyRoute, RouteStop
+from .models import Route, SavedRoute, Landmark, JeepneyRoute, RouteStop, FareConfig
 
 
 admin.site.register(Route)
@@ -26,4 +26,8 @@ class JeepneyRouteAdmin(admin.ModelAdmin):
 @admin.register(SavedRoute)
 class SavedRouteAdmin(admin.ModelAdmin):
     list_display = ('user', 'origin', 'destination', 'transport_type', 'saved_at')
+
+@admin.register(FareConfig)
+class FareConfigAdmin(admin.ModelAdmin):
+    list_display = ('transport_type', 'base_fare', 'initial_distance_km', 'extra_km_rate')
 

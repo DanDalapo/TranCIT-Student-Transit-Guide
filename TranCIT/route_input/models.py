@@ -34,7 +34,6 @@ JEEPNEY_CODE_CHOICES = [
 
 TRANSPORT_CHOICES = [
         ('Jeepney', 'Jeepney'),
-        ('Bus', 'Bus'),
         ('Taxi', 'Taxi'),
         ('Motorcycle', 'Motorcycle'),
 ]
@@ -89,7 +88,6 @@ class Route(models.Model):
             except json.JSONDecodeError:
                 return []
         return []
-
 
 class SavedRoute(models.Model):
     """
@@ -153,6 +151,43 @@ class SavedRoute(models.Model):
                 return []
         return []
 
+class FareConfig(models.Model):
+    transport_type = models.CharField(
+        max_length=50, 
+        choices=TRANSPORT_CHOICES, 
+        unique=True
+    )
+    base_fare = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    
+    # Distance Logic
+    initial_distance_km = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Distance covered by the base fare (e.g., 4km for Jeep)"
+    )
+    extra_km_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Cost per km after the initial distance"
+    )
+    
+    # Taxi Specific
+    waiting_time_rate_per_min = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, null=True, blank=True,
+        help_text="For Taxis only"
+    )
+    
+    # Motorcycle Specific (Tiered pricing)
+    long_distance_threshold_km = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, null=True, blank=True,
+        help_text="Distance where the rate changes (e.g., 8km for Habal-habal)"
+    )
+    long_distance_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, null=True, blank=True,
+        help_text="Cost per km after the long distance threshold"
+    )
+
+    def __str__(self):
+        return f"{self.transport_type} Fare Configuration"
+    
 class Landmark(models.Model):
     name = models.CharField(max_length=255, unique=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)

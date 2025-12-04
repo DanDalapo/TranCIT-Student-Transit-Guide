@@ -31,6 +31,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const topNavSearch = $('#topNavSearch');
     const topNavSuggestions = $('#topNavSuggestions');
     const clearSearchBtn = $('#clearSearchBtn');
+
+    // === ROUTE EXPLORER LOGIC ===
+    const modePlanBtn = $('#modePlanBtn');
+    const modeExploreBtn = $('#modeExploreBtn');
+    const planSection = $('#planRouteSection');
+    const exploreSection = $('#routeExplorerSection');
+    const explorerSelect = $('#explorerCodeSelect');
+    const explorerDetails = $('#explorerDetails');
+    const expCodeDisplay = $('#expCodeDisplay');
+    const expDescDisplay = $('#expDescDisplay');
+    const expStopCount = $('#expStopCount');
+
+    // === SUGGESTION FORM HANDLERS ===
+    const pinSuggestOriginBtn = $('#pinSuggestOriginBtn');
+    const pinSuggestDestBtn = $('#pinSuggestDestBtn');
+    const detectSuggestBtn = $('#detectSuggestLocationBtn');
+    const suggestOriginInput = $('#suggest_origin');
+    const suggestOriginLat = $('#suggest_origin_latitude');
+    const suggestOriginLon = $('#suggest_origin_longitude');
+    const suggestRouteForm = $('#suggestRouteForm');
+
+    // === SUGGESTION FORM RESET LOGIC ===
+    const resetSuggestBtn = $('#resetSuggestBtn');
+    const suggestCodeSelect = $('#suggest_code');
+    const suggestNotesInput = $('#suggest_notes');
     
     // --- MODIFICATION: Added selector for the new swap button --- //
     const swapLocationsBtn = $('#swapLocationsBtn');
@@ -173,6 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     const btnId = `btn-view-${index}`;
                     const walkText = jeep.walk_dist ? `Walk ${jeep.walk_dist}` : 'Walk';
+                    const walkFromText = jeep.walk_dist_dest ? `Walk ${jeep.walk_dist_dest}` : 'Walk';
 
                     let htmlContent = `
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
@@ -205,8 +231,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <i class="fa-solid fa-bus"></i> Ride <strong>${jeep.code_2}</strong> to <strong>${jeep.alight_at}</strong>
                             </div>`;
                     } else {
-                         htmlContent += `<div><i class="fa-solid fa-file-arrow-down"></i> Get off at <strong>${jeep.alight_at}</strong></div>`;
+                          // final walk instruction   
+                         htmlContent += `<div><i class="fa-solid fa-file-arrow-down"></i> Get off at <strong>${jeep.alight_at}</strong></div>
+                        <div style="margin-top: 4px;"><i class="fa-solid fa-person-walking"></i> ${walkFromText} to Destination</div>`;
                     }
+
+                  
 
                     // Added TYPE="BUTTON" to prevent refresh
                     htmlContent += `</div>
@@ -510,13 +540,23 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const layers = [];
 
-            // 1. Walk Line
+            //Walk Line (Origin -> Board)
             const walkRes = await fetch('/routes/get_segment_path/', {
                 method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
                 body: JSON.stringify({start: jeep.origin_coords, end: jeep.board_coords, mode: 'walking'})
             });
             const walkData = await walkRes.json();
             if(walkData.path_coords) layers.push(L_Leaflet.polyline(walkData.path_coords, {color: '#2196F3', weight: 5, dashArray: '10,10'}));
+            
+            //Walk Line (Alight -> Destination)
+            const walkDestRes = await fetch('/routes/get_segment_path/', {
+                method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrftoken},
+                body: JSON.stringify({start: jeep.alight_coords, end: jeep.dest_coords, mode: 'walking'})
+            });
+            const walkDestData = await walkDestRes.json();
+            if(walkDestData.path_coords) {
+                layers.push(L_Leaflet.polyline(walkDestData.path_coords, {color: '#2196F3', weight: 5, dashArray: '10,10'}));
+            }
 
             if (jeep.type === 'direct') {
                  const rideRes = await fetch('/routes/get_segment_path/', {
@@ -805,6 +845,35 @@ document.addEventListener('DOMContentLoaded', () => {
         // 6. Clear URL parameters
         window.history.replaceState({}, '', window.location.pathname);
     });
+
+    if (resetSuggestBtn) {
+        resetSuggestBtn.addEventListener('click', () => {
+            // 1. Clear Text Inputs
+            if (suggestOriginInput) suggestOriginInput.value = '';
+            const suggestDestInput = $('#suggest_destination');
+            if (suggestDestInput) suggestDestInput.value = '';
+            if (suggestNotesInput) suggestNotesInput.value = '';
+
+            // 2. Reset Dropdown
+            if (suggestCodeSelect) suggestCodeSelect.selectedIndex = 0;
+
+            // 3. Clear Hidden Coordinate Inputs
+            const hiddenIds = [
+                'suggest_origin_latitude', 'suggest_origin_longitude',
+                'suggest_destination_latitude', 'suggest_destination_longitude'
+            ];
+            hiddenIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+
+            // 4. Optional: Clear map pins 
+            // (Only if you want to remove the markers from the map too)
+            if (getMapObjects()) {
+                mapIframe.contentWindow.postMessage({ type: 'CLEAR_PINS' }, '*');
+            }
+        });
+    }
     
     // --- MODIFICATION: Added Swap Logic --- //
     swapLocationsBtn?.addEventListener('click', () => {
@@ -846,6 +915,246 @@ document.addEventListener('DOMContentLoaded', () => {
         saveMyRouteBtn.addEventListener('click', () => {
             const formData = new FormData(routeForm);
             performSave('/routes/save_current_route/', formData);
+        });
+    }
+
+    // 1. Mode Switching
+    function switchMode(mode) {
+        if (mode === 'plan') {
+            planSection.style.display = 'block';
+            exploreSection.style.display = 'none';
+            modePlanBtn.classList.add('primary');
+            modePlanBtn.style.backgroundColor = '#4CAF50';
+            modePlanBtn.style.color = 'white';
+            modeExploreBtn.classList.remove('primary');
+            modeExploreBtn.style.backgroundColor = '#f0f0f0';
+            modeExploreBtn.style.color = '#333';
+            
+            // Clear explorer map layers if switching back
+            clearExplorerLayers();
+        } else {
+            planSection.style.display = 'none';
+            exploreSection.style.display = 'block';
+            modeExploreBtn.classList.add('primary');
+            modeExploreBtn.style.backgroundColor = '#4CAF50';
+            modeExploreBtn.style.color = 'white';
+            modePlanBtn.classList.remove('primary');
+            modePlanBtn.style.backgroundColor = '#f0f0f0';
+            modePlanBtn.style.color = '#333';
+            
+            // Load codes if empty
+            if (explorerSelect.options.length <= 1) loadJeepCodes();
+        }
+    }
+
+    if (modePlanBtn && modeExploreBtn) {
+        modePlanBtn.addEventListener('click', () => switchMode('plan'));
+        modeExploreBtn.addEventListener('click', () => switchMode('explore'));
+    }
+
+    async function loadJeepCodes() {
+        try {
+            const res = await fetch('/routes/get_jeep_codes/');
+            const data = await res.json();
+            explorerSelect.innerHTML = '<option value="">-- Select Code --</option>';
+            data.codes.forEach(code => {
+                const opt = document.createElement('option');
+                opt.value = code;
+                opt.textContent = code;
+                explorerSelect.appendChild(opt);
+            });
+        } catch (err) {
+            console.error('Failed to load codes', err);
+            explorerSelect.innerHTML = '<option value="">Error loading</option>';
+        }
+    }
+
+    if (explorerSelect) {
+        explorerSelect.addEventListener('change', async () => {
+            const code = explorerSelect.value;
+            
+            // If "Select Code" (empty) is chosen, hide everything
+            if (!code) {
+                explorerDetails.style.display = 'none';
+                if (typeof clearExplorerLayers === 'function') clearExplorerLayers();
+                return;
+            }
+
+            // --- START LOADING STATE ---
+            // 1. Disable input to prevent multiple clicks
+            explorerSelect.disabled = true;
+            document.body.style.cursor = 'wait'; // Show spinner cursor
+
+            // 2. Show the details card immediately with placeholder text
+            explorerDetails.style.display = 'block';
+            expCodeDisplay.textContent = `Loading ${code}...`;
+            expCodeDisplay.style.backgroundColor = '#ccc'; // Grey out the badge
+            expDescDisplay.textContent = "Fetching route path and stops...";
+            expStopCount.textContent = "--";
+            
+            // 3. Clear the map temporarily
+            if (typeof clearExplorerLayers === 'function') clearExplorerLayers();
+
+            try {
+                const res = await fetch(`/routes/get_jeepney_route_details/?code=${code}`);
+                const data = await res.json();
+
+                if (data.error) throw new Error(data.error);
+
+                // --- UPDATE UI WITH DATA ---
+                expCodeDisplay.textContent = data.code;
+                expCodeDisplay.style.backgroundColor = ''; // Restore original color (CSS)
+                expDescDisplay.textContent = data.description;
+                expStopCount.textContent = data.stops.length; 
+
+                // Draw on Map
+                drawExplorerRoute(data, data.code);
+
+            } catch (err) {
+                console.error(err);
+                alertMsg(err.message || "Failed to load route.");
+                explorerDetails.style.display = 'none'; // Hide details if it failed
+            } finally {
+                // --- END LOADING STATE ---
+                // Always run this, success or fail
+                explorerSelect.disabled = false;
+                document.body.style.cursor = 'default';
+            }
+        });
+    }
+
+    function clearExplorerLayers() {
+        if (window.explorerLayerGroup) {
+            foliumMap.removeLayer(window.explorerLayerGroup);
+            window.explorerLayerGroup = null;
+        }
+    }
+
+    function drawExplorerRoute(routeData, code) {
+        if (!getMapObjects()) return alertMsg("Map not ready.");
+        
+        clearExplorerLayers(); 
+        
+        // 1. Draw the Road Path (Squiggly Line)
+        // routeData.geometry contains the high-res path from ORS
+        const polyline = L_Leaflet.polyline(routeData.geometry, {
+            color: '#FF5722', 
+            weight: 5,
+            opacity: 0.8
+        });
+
+        const markers = [];
+        const stops = routeData.stops; // Use the stops list for markers
+        
+        // 2. Start Marker (Green)
+        if (stops.length > 0) {
+            const start = stops[0];
+            const startIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'play', prefix: 'fa', markerColor: 'green' });
+            markers.push(L_Leaflet.marker([start.lat, start.lng], {icon: startIcon}).bindPopup(`<b>Start:</b> ${start.name}`));
+        }
+
+        // 3. End Marker (Red)
+        if (stops.length > 1) {
+            const end = stops[stops.length - 1];
+            const endIcon = L_Leaflet.AwesomeMarkers.icon({ icon: 'stop', prefix: 'fa', markerColor: 'red' });
+            markers.push(L_Leaflet.marker([end.lat, end.lng], {icon: endIcon}).bindPopup(`<b>End:</b> ${end.name}`));
+        }
+
+        // 4. Intermediate Dots (White)
+        for (let i = 1; i < stops.length - 1; i++) {
+            const stop = stops[i];
+            const circle = L_Leaflet.circleMarker([stop.lat, stop.lng], {
+                radius: 4,
+                fillColor: "white",
+                color: "#FF5722",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).bindPopup(`${code} Stop: ${stop.name}`);
+            markers.push(circle);
+        }
+
+        const layerGroup = L_Leaflet.featureGroup([polyline, ...markers]);
+        layerGroup.addTo(foliumMap);
+        foliumMap.fitBounds(layerGroup.getBounds().pad(0.1));
+        
+        window.explorerLayerGroup = layerGroup;
+    }
+
+    if (pinSuggestOriginBtn) {
+        pinSuggestOriginBtn.addEventListener('click', () => {
+            if (mapIframe && mapIframe.contentWindow) {
+                mapIframe.contentWindow.postMessage({ type: 'SET_PIN_MODE', mode: 'suggest_origin' }, '*');
+                alertMsg('Click map to set Origin');
+            }
+        });
+    }
+
+    if (pinSuggestDestBtn) {
+        pinSuggestDestBtn.addEventListener('click', () => {
+            if (mapIframe && mapIframe.contentWindow) {
+                mapIframe.contentWindow.postMessage({ type: 'SET_PIN_MODE', mode: 'suggest_destination' }, '*');
+                alertMsg('Click map to set Destination');
+            }
+        });
+    }
+
+    if (detectSuggestBtn) {
+        detectSuggestBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) return alertMsg('Geolocation not supported.');
+            
+            suggestOriginInput.value = 'Detecting...';
+            
+            navigator.geolocation.getCurrentPosition(async pos => {
+                const { latitude: lat, longitude: lon } = pos.coords;
+                
+                // Set hidden inputs
+                if(suggestOriginLat) suggestOriginLat.value = lat;
+                if(suggestOriginLon) suggestOriginLon.value = lon;
+
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+                    const data = await res.json();
+                    const addr = data?.display_name || `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
+                    suggestOriginInput.value = addr;
+
+                    // Update Map Pin
+                    if (mapIframe && mapIframe.contentWindow) {
+                        mapIframe.contentWindow.postMessage({
+                            type: 'DRAW_PIN',
+                            mode: 'suggest_origin', // Use our new mode
+                            lat: lat,
+                            lng: lon,
+                            label: addr
+                        }, '*');
+                    }
+                } catch {
+                    suggestOriginInput.value = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                    alertMsg('Location detected (Address lookup failed)');
+                }
+            }, err => {
+                console.error(err);
+                suggestOriginInput.value = '';
+                alertMsg('Location detection failed.');
+            }, { enableHighAccuracy: true, timeout: 7000 });
+        });
+    }
+
+    if (suggestRouteForm) {
+        suggestRouteForm.addEventListener('submit', function() {
+            // This event only fires if the browser's built-in validation passes
+            const submitBtn = suggestRouteForm.querySelector('button[type="submit"]');
+            
+            if (submitBtn) {
+                // 1. Disable the button to prevent double-clicks
+                submitBtn.disabled = true;
+                
+                // 2. Change text to show loading state
+                // We keep the width consistent or let it expand slightly
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+                submitBtn.style.cursor = 'wait';
+                submitBtn.style.opacity = '0.7';
+            }
         });
     }
 });

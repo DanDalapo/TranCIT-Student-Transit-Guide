@@ -247,11 +247,14 @@ LANDMARKS = {
     "USJ-R Basak (High School)": (10.2935, 123.8675),
     
     # N. Bacalso Landmarks
+    "N. Bacalso Ave" : (10.291159, 123.877174),
     "SCSIT": (10.2970, 123.8920), # Salazar Colleges
     "Citilink Terminal": (10.2975, 123.8930),
+    "Mambaling" : (10.289482, 123.869003),
     "Mambaling Flyover": (10.2900, 123.8720),
     "Fooda Mambaling": (10.2910, 123.8715),
-    "Shopwise Mambaling": (10.2915, 123.8710), # Already added, verifying
+    "Shopwise Mambaling": (10.289821, 123.871224), # Already added, verifying
+    "Basak Pardo" : (10.288123, 123.864390),
     
     # Downtown / Historic
     "Shamrock (P. Burgos)": (10.2945, 123.9025),
@@ -261,6 +264,7 @@ LANDMARKS = {
     "Duljo Fatima": (10.2915, 123.8780),
     
     # Bulacao / Pardo Specifics
+    "CIT-U": (10.294079, 123.881184),
     "St. Paul College (Bulacao)": (10.2640, 123.8515),
     "Citi Hardware (Bulacao)": (10.2675, 123.8530),
     "Prince Warehouse (Bulacao)": (10.2690, 123.8540),
@@ -328,6 +332,8 @@ LANDMARKS = {
     "Allson's Inn": (10.3120, 123.9020),
     "Zapatera Brgy Hall": (10.3090, 123.9010),
     "Junquera Ext": (10.3010, 123.8980),
+
+    "Tres de Abril": (10.297587, 123.880060),
     
     # Mandaue / AS Fortuna
     "Cebu Home & Builders": (10.3440, 123.9200),
@@ -697,7 +703,7 @@ JEEPNEY_ROUTES = {
     },
     "12I": {
         "description": "Labangon to SM City via Pier/Colon",
-        "path": ["Punta Princesa", "F. Llamas St", "Brgy Tisa", "Gaisano Tisa", "Katipunan St", "Labangon Public Market", "Tres de Abril", "N. Bacalso Ave", "Citilink Terminal", "Cebu City Medical Center", "South Bus Terminal", "E-Mall", "ACT", "P. del Rosario", "USC Main", "Junquera St", "Colon", "Gaisano Main", "UV Main", "Colon Obelisk", "P. Burgos St", "USPF (Old Campus/Mabini)", "Cathedral", "F. Urdaneta St", "MJ Cuenco", "Legaspi Ext", "Plaza Independencia", "Fort San Pedro", "Sergio Osmena Blvd", "Pier 3", "Pier 4", "Pier 5", "Robinsons Galleria Cebu", "PCSO", "Sugbutel", "SM City", "North Bus Terminal", "Juan Luna Ave", "F. Cabahug St", "APM Mall", "Sergio Osmena Blvd", "Radisson Blu", "Sugbutel", "PCSO", "Robinsons Galleria Cebu", "Legaspi Ext", "Plaza Independencia", "Fort San Pedro", "Cathedral", "Basilica Sto Nino", "V. Gullas St", "Manalili St", "Manila Foodshoppe", "Pacific Tourist Inn", "Borromeo St", "Sanciangko St", "Aerol Pensione House", "Panganiban St", "Cebu City Medical Center", "N. Bacalso Ave", "Katipunan St", "Tres de Abril", "Punta Princesa"]
+        "path": ["Punta Princesa", "F. Llamas St", "Brgy Tisa", "Gaisano Tisa", "Katipunan St", "Labangon Public Market", "Tres de Abril", "Citilink Terminal", "Cebu City Medical Center", "South Bus Terminal", "E-Mall", "ACT", "P. del Rosario", "USC Main", "Junquera St", "Colon", "Gaisano Main", "UV Main", "Colon Obelisk", "P. Burgos St", "USPF (Old Campus/Mabini)", "Cathedral", "F. Urdaneta St", "MJ Cuenco", "Legaspi Ext", "Plaza Independencia", "Fort San Pedro", "Sergio Osmena Blvd", "Pier 3", "Pier 4", "Pier 5", "Robinsons Galleria Cebu", "PCSO", "Sugbutel", "SM City", "North Bus Terminal", "Juan Luna Ave", "F. Cabahug St", "APM Mall", "Sergio Osmena Blvd", "Radisson Blu", "Sugbutel", "PCSO", "Robinsons Galleria Cebu", "Legaspi Ext", "Plaza Independencia", "Fort San Pedro", "Cathedral", "Basilica Sto Nino", "V. Gullas St", "Manalili St", "Manila Foodshoppe", "Pacific Tourist Inn", "Borromeo St", "Sanciangko St", "Aerol Pensione House", "Panganiban St", "Cebu City Medical Center", "N. Bacalso Ave", "Katipunan St", "Tres de Abril", "Punta Princesa"]
     },
     "12L": {
         "description": "Labangon to Ayala via Banawa/Capitol",

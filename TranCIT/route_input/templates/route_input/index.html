@@ -59,171 +59,202 @@
       <div class="drag-handle"></div>
 
       <div class="panel-content">
-          <h3>Plan Your Route</h3>
-          
-          <form id="routeForm" method="post" action="{% url 'plan_route' %}" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="form_type" value="plan_route">
-
-            <!-- MODIFICATION START: Added a wrapper for positioning the swap button -->
-            <div class="location-swap-wrapper">
-                <label for="{{ form.origin.id_for_label }}">Current Location</label>
-                <input type="text" name="{{ form.origin.name }}" id="{{ form.origin.id_for_label }}"
-                       placeholder="Your current location"
-                       value="{{ get_origin_text|default_if_none:form.origin.value }}"
-                       {% if form.origin.field.required %}required{% endif %}
-                       class="form-control">
-
-                <div class="pin-controls" style="margin-top: 5px;">
-                    <button type="button" id="pinOriginBtn" class="btn btn-sm">
-                        <i class="fa-solid fa-map-pin"></i> Pin Origin on Map
-                    </button>
-                </div>
-
-                <!-- This is the new Swap Button -->
-                <button type="button" id="swapLocationsBtn" class="swap-btn" title="Swap Origin and Destination">
-                    <i class="fa-solid fa-arrows-up-down"></i>
-                </button>
-
-                <label for="{{ form.destination.id_for_label }}">Where do you want to go?</label>
-                <div class="destination-input-group">
-                    <input type="text" name="{{ form.destination.name }}" id="{{ form.destination.id_for_label }}"
-                           placeholder="Enter your destination"
-                           value="{{ get_destination_text|default_if_none:form.destination.value }}"
-                           {% if form.destination.field.required %}required{% endif %}
-                           class="form-control">
-                    <button type="button" id="pinDestinationBtn" class="btn btn-sm">
-                        <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
-                    </button>
-                    <div id="destinationSuggestions" class="destination-suggestions" style="display: none;"></div>
-                </div>
-            </div>
-            <!-- MODIFICATION END -->
-
-            <div class="divider">──────────  or  ──────────</div>
-            <button type="button" id="detectLocationBtn" class="btn btn-sm">
-              <i class="fa-solid fa-location-crosshairs"></i> Detect My Location
-            </button>
-            
-            <span class="error" id="error-origin">
-              {% if form.origin.errors %}{{ form.origin.errors }}{% endif %}
-            </span>
-
-            <span class="error" id="error-destination">
-              {% if form.destination.errors %}{{ form.destination.errors }}{% endif %}
-            </span>
-
-            <label for="{{ form.transport_type.id_for_label }}">Transportation Type</label>
-            {{ form.transport_type }}
-            <span class="error" id="error-transport-type">
-              {% if form.transport_type.errors %}{{ form.transport_type.errors }}{% endif %}
-            </span>
-
-            <div class="form-actions" style="margin-top: 10px;">
-              <button type="submit" class="btn primary" id="navigateBtn">
-                <i class="fa-solid fa-route"></i> Navigate Route
-              </button>
-              <button type="button" class="btn" id="resetFormBtn" style="background-color: #6c757d; color: white;">
-                <i class="fa-solid fa-times"></i> Reset
-              </button> 
-            </div>
-
-            <div id="resultsDisplay">
-                <div class="result-item">
-                     <label>Transport</label>
-                     <p id="calculatedTransport">
-                         {% if calculated_distance %} {{ request.GET.transport_type }} {% else %} -- {% endif %}
-                     </p>
-                </div>
-                <div class="result-item">
-                    <label>Est. Fare</label>
-                    <p id="calculatedFare">
-                        {% if calculated_fare is not None %} Php {{ calculated_fare|floatformat:2 }} {% else %} Php 0.00 {% endif %}
-                    </p>
-                </div>
-                <div class="result-item">
-                    <label>Est. Time</label>
-                    <p id="calculatedTime">
-                        {% if calculated_time is not None %} {{ calculated_time|floatformat:0 }} min {% else %} -- min {% endif %}
-                    </p>
-                </div>
-                <div class="result-item">
-                    <label>Distance</label>
-                    <p id="calculatedDistance">
-                        {% if calculated_distance is not None %} {{ calculated_distance|floatformat:1 }} km {% else %} -- km {% endif %}
-                    </p>
-                </div>
-            </div>
-
-            <div id="alternativeRoutesContainer" style="display: none; margin-top: 15px; padding: 10px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px;">
-                <h5 style="margin: 0 0 8px 0; color: #2e7d32; font-size: 14px;">
-                    <i class="fa-solid fa-route"></i> Suggested Jeepneys
-                </h5>
-                <ul id="alternativeRoutesList" style="list-style: none; padding: 0; margin: 0; font-size: 13px; color: #333;">
-                </ul>
-            </div>
-            <input type="hidden" name="fare" id="id_fare" value="{{ calculated_fare|default:'0.00' }}">
-            <input type="hidden" name="distance_km" id="id_distance_km" value="{{ calculated_distance|default:'' }}">
-            <input type="hidden" name="travel_time_minutes" id="id_travel_time_minutes" value="{{ calculated_time|default:'' }}">
-            <input type="hidden" name="origin_latitude" id="id_origin_latitude" value="{{ get_origin_lat|default:'' }}">
-            <input type="hidden" name="origin_longitude" id="id_origin_longitude" value="{{ get_origin_lon|default:'' }}">
-            <input type="hidden" name="destination_latitude" id="id_destination_latitude" value="{{ get_dest_lat|default:'' }}">
-            <input type="hidden" name="destination_longitude" id="id_destination_longitude" value="{{ get_dest_lon|default:'' }}">
-
-            <label for="{{ form.notes.id_for_label }}">Additional Notes (Optional)</label>
-            {{ form.notes }}
-
-            {% if success_message %}<p class="success-message">{{ success_message }}</p>{% endif %}
-            {% if error_message %}<p class="error-message">{{ error_message }}</p>{% endif %}
-
-            {% if user.is_authenticated %}
-              <button type="button" id="saveMyRouteBtn" class="btn primary" {% if not calculated_distance %}disabled{% endif %}>
-                <i class="fa-solid fa-heart"></i> Save My Route
-              </button>
-            {% else %}
-              <button type="button" class="btn primary" disabled title="Unavailable in Guest Mode">
-                <i class="fa-solid fa-heart"></i> Save My Route
-              </button>
-            {% endif %}
-          </form>
-
-          {% if user.is_authenticated %}
-          <div class="saved-locations">
-            <h4><i class="fa-solid fa-star"></i> My Saved Routes</h4>
-            <p style="font-size: 12px; color: #666;">Your frequently used routes</p>
-            <ul id="savedList">
-              {% if saved_routes %}
-                {% for saved in saved_routes %}
-                  <li class="saved-route-item">
-                    <div class="saved-route-info">
-                        <strong>{{ saved.transport_type }}</strong>
-                        <p style="margin: 3px 0; font-size: 12px;">{{ saved.origin }} → {{ saved.destination }}</p>
-                    </div>
-                    <div class="saved-route-actions">
-                        <button type="button" class="btn btn-sm view-saved-route" 
-                            style="flex: 1; background-color: #2196F3; color: white;"
-                            data-route-id="{{ saved.id }}"
-                            data-path="{{ saved.route_path_coords|escapejs }}"
-                            data-origin-lat="{{ saved.origin_latitude }}"
-                            data-origin-lon="{{ saved.origin_longitude }}"
-                            data-dest-lat="{{ saved.destination_latitude }}"
-                            data-dest-lon="{{ saved.destination_longitude }}"
-                            data-route-origin="{{ saved.origin }}"
-                            data-route-destination="{{ saved.destination }}"
-                            title="View"><i class="fa-solid fa-map"></i> View</button>
-                        <button type="button" class="btn btn-sm delete-saved-route" 
-                            style="flex: 1; background-color: #dc3545; color: white;"
-                            data-saved-id="{{ saved.id }}"
-                            title="Delete"><i class="fa-solid fa-trash"></i> Delete</button>
-                    </div>
-                  </li>
-                {% endfor %}
-              {% else %}
-                <li style="color: #999; font-style: italic;">No saved routes yet</li>
-              {% endif %}
-            </ul>
+          <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+              <button type="button" id="modePlanBtn" class="btn btn-sm primary" style="flex: 1;">Plan Route</button>
+              <button type="button" id="modeExploreBtn" class="btn btn-sm" style="flex: 1; background-color: #f0f0f0; color: #333;">Route Explorer</button>
           </div>
-          {% endif %}
+
+          <div id="planRouteSection">
+              <h3>Plan Your Route</h3>
+              
+              <form id="routeForm" method="post" action="{% url 'plan_route' %}" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="plan_route">
+
+                <div class="location-swap-wrapper">
+                    <label for="{{ form.origin.id_for_label }}">Current Location</label>
+                    <input type="text" name="{{ form.origin.name }}" id="{{ form.origin.id_for_label }}"
+                           placeholder="Your current location"
+                           value="{{ get_origin_text|default_if_none:form.origin.value }}"
+                           {% if form.origin.field.required %}required{% endif %}
+                           class="form-control">
+
+                    <div class="pin-controls" style="margin-top: 5px;">
+                        <button type="button" id="pinOriginBtn" class="btn btn-sm">
+                            <i class="fa-solid fa-map-pin"></i> Pin Origin on Map
+                        </button>
+                    </div>
+
+                    <button type="button" id="swapLocationsBtn" class="swap-btn" title="Swap Origin and Destination">
+                        <i class="fa-solid fa-arrows-up-down"></i>
+                    </button>
+
+                    <label for="{{ form.destination.id_for_label }}">Where do you want to go?</label>
+                    <div class="destination-input-group">
+                        <input type="text" name="{{ form.destination.name }}" id="{{ form.destination.id_for_label }}"
+                               placeholder="Enter your destination"
+                               value="{{ get_destination_text|default_if_none:form.destination.value }}"
+                               {% if form.destination.field.required %}required{% endif %}
+                               class="form-control">
+                        <button type="button" id="pinDestinationBtn" class="btn btn-sm">
+                            <i class="fa-solid fa-map-pin"></i> Pin Destination on Map
+                        </button>
+                        <div id="destinationSuggestions" class="destination-suggestions" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <div class="divider">──────────  or  ──────────</div>
+                <button type="button" id="detectLocationBtn" class="btn btn-sm">
+                  <i class="fa-solid fa-location-crosshairs"></i> Detect My Location
+                </button>
+                
+                <span class="error" id="error-origin">
+                  {% if form.origin.errors %}{{ form.origin.errors }}{% endif %}
+                </span>
+
+                <span class="error" id="error-destination">
+                  {% if form.destination.errors %}{{ form.destination.errors }}{% endif %}
+                </span>
+
+                <label for="{{ form.transport_type.id_for_label }}">Transportation Type</label>
+                {{ form.transport_type }}
+                <span class="error" id="error-transport-type">
+                  {% if form.transport_type.errors %}{{ form.transport_type.errors }}{% endif %}
+                </span>
+
+                <div class="form-actions" style="margin-top: 10px;">
+                  <button type="submit" class="btn primary" id="navigateBtn">
+                    <i class="fa-solid fa-route"></i> Navigate Route
+                  </button>
+                  <button type="button" class="btn" id="resetFormBtn" style="background-color: #6c757d; color: white;">
+                    <i class="fa-solid fa-times"></i> Reset
+                  </button> 
+                </div>
+
+                <div id="resultsDisplay">
+                    <div class="result-item">
+                         <label>Transport</label>
+                         <p id="calculatedTransport">
+                             {% if calculated_distance %} {{ request.GET.transport_type }} {% else %} -- {% endif %}
+                         </p>
+                    </div>
+                    <div class="result-item">
+                        <label>Est. Fare</label>
+                        <p id="calculatedFare">
+                            {% if calculated_fare is not None %} Php {{ calculated_fare|floatformat:2 }} {% else %} Php 0.00 {% endif %}
+                        </p>
+                    </div>
+                    <div class="result-item">
+                        <label>Est. Time</label>
+                        <p id="calculatedTime">
+                            {% if calculated_time is not None %} {{ calculated_time|floatformat:0 }} min {% else %} -- min {% endif %}
+                        </p>
+                    </div>
+                    <div class="result-item">
+                        <label>Distance</label>
+                        <p id="calculatedDistance">
+                            {% if calculated_distance is not None %} {{ calculated_distance|floatformat:1 }} km {% else %} -- km {% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <div id="alternativeRoutesContainer" style="display: none; margin-top: 15px; padding: 10px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px;">
+                    <h5 style="margin: 0 0 8px 0; color: #2e7d32; font-size: 14px;">
+                        <i class="fa-solid fa-route"></i> Suggested Jeepneys
+                    </h5>
+                    <ul id="alternativeRoutesList" style="list-style: none; padding: 0; margin: 0; font-size: 13px; color: #333;">
+                    </ul>
+                </div>
+                <input type="hidden" name="fare" id="id_fare" value="{{ calculated_fare|default:'0.00' }}">
+                <input type="hidden" name="distance_km" id="id_distance_km" value="{{ calculated_distance|default:'' }}">
+                <input type="hidden" name="travel_time_minutes" id="id_travel_time_minutes" value="{{ calculated_time|default:'' }}">
+                <input type="hidden" name="origin_latitude" id="id_origin_latitude" value="{{ get_origin_lat|default:'' }}">
+                <input type="hidden" name="origin_longitude" id="id_origin_longitude" value="{{ get_origin_lon|default:'' }}">
+                <input type="hidden" name="destination_latitude" id="id_destination_latitude" value="{{ get_dest_lat|default:'' }}">
+                <input type="hidden" name="destination_longitude" id="id_destination_longitude" value="{{ get_dest_lon|default:'' }}">
+
+                <label for="{{ form.notes.id_for_label }}">Additional Notes (Optional)</label>
+                {{ form.notes }}
+
+                {% if success_message %}<p class="success-message">{{ success_message }}</p>{% endif %}
+                {% if error_message %}<p class="error-message">{{ error_message }}</p>{% endif %}
+
+                {% if user.is_authenticated %}
+                  <button type="button" id="saveMyRouteBtn" class="btn primary" {% if not calculated_distance %}disabled{% endif %}>
+                    <i class="fa-solid fa-heart"></i> Save My Route
+                  </button>
+                {% else %}
+                  <button type="button" class="btn primary" disabled title="Unavailable in Guest Mode">
+                    <i class="fa-solid fa-heart"></i> Save My Route
+                  </button>
+                {% endif %}
+              </form>
+
+              {% if user.is_authenticated %}
+              <div class="saved-locations">
+                <h4><i class="fa-solid fa-star"></i> My Saved Routes</h4>
+                <p style="font-size: 12px; color: #666;">Your frequently used routes</p>
+                <ul id="savedList">
+                  {% if saved_routes %}
+                    {% for saved in saved_routes %}
+                      <li class="saved-route-item">
+                        <div class="saved-route-info">
+                            <strong>{{ saved.transport_type }}</strong>
+                            <p style="margin: 3px 0; font-size: 12px;">{{ saved.origin }} → {{ saved.destination }}</p>
+                        </div>
+                        <div class="saved-route-actions">
+                            <button type="button" class="btn btn-sm view-saved-route" 
+                                style="flex: 1; background-color: #2196F3; color: white;"
+                                data-route-id="{{ saved.id }}"
+                                data-path="{{ saved.route_path_coords|escapejs }}"
+                                data-origin-lat="{{ saved.origin_latitude }}"
+                                data-origin-lon="{{ saved.origin_longitude }}"
+                                data-dest-lat="{{ saved.destination_latitude }}"
+                                data-dest-lon="{{ saved.destination_longitude }}"
+                                data-route-origin="{{ saved.origin }}"
+                                data-route-destination="{{ saved.destination }}"
+                                title="View"><i class="fa-solid fa-map"></i> View</button>
+                            <button type="button" class="btn btn-sm delete-saved-route" 
+                                style="flex: 1; background-color: #dc3545; color: white;"
+                                data-saved-id="{{ saved.id }}"
+                                title="Delete"><i class="fa-solid fa-trash"></i> Delete</button>
+                        </div>
+                      </li>
+                    {% endfor %}
+                  {% else %}
+                    <li style="color: #999; font-style: italic;">No saved routes yet</li>
+                  {% endif %}
+                </ul>
+              </div>
+              {% endif %}
+          </div>
+          
+          <div id="routeExplorerSection" style="display: none;">
+              <h4 style="color: #2e7d32; margin-bottom: 10px;">
+                  <i class="fa-solid fa-map-signs"></i> Explore Jeepney Routes
+              </h4>
+              <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                  Select a jeepney code to visualize its entire route on the map.
+              </p>
+
+              <label for="explorerCodeSelect">Select Jeepney Code</label>
+              <select id="explorerCodeSelect" class="form-control">
+                  <option value="">Loading codes...</option>
+              </select>
+
+              <div id="explorerDetails" style="margin-top: 20px; display: none;">
+                  <div class="journey-card">
+                      <div class="journey-header">
+                          <span id="expCodeDisplay" class="segment jeepney-segment" style="font-size: 16px;"></span>
+                      </div>
+                      <p id="expDescDisplay" style="font-size: 13px; color: #555; margin-top: 5px;"></p>
+                      <div style="margin-top: 10px; font-size: 12px; color: #777;">
+                          <i class="fa-solid fa-map-pin"></i> <span id="expStopCount"></span> stops
+                      </div>
+                  </div>
+              </div>
+          </div>
+
       </div> 
     </aside>
 
@@ -251,6 +282,7 @@
                             <div class="journey-details">
                                 <p><strong>From:</strong> {{ route.origin }}</p>
                                 <p><strong>To:</strong> {{ route.destination }}</p>
+                                <p><strong>Note:</strong> {{route.notes}}</p>
                                 <p class="journey-fare">Php {{ route.fare|floatformat:2 }}</p>
                             </div>
                             <div style="display: flex; gap: 5px; margin-top: 8px;">
@@ -288,11 +320,33 @@
               <input type="hidden" name="form_type" value="suggest_route">
               <input type="hidden" name="transport_type" value="Jeepney">
               
+              <input type="hidden" id="suggest_origin_latitude" name="origin_latitude">
+              <input type="hidden" id="suggest_origin_longitude" name="origin_longitude">
+              <input type="hidden" id="suggest_destination_latitude" name="destination_latitude">
+              <input type="hidden" id="suggest_destination_longitude" name="destination_longitude">
+
               <label for="suggest_origin">Route Origin</label>
-              <input type="text" name="origin" id="suggest_origin" class="form-control" required>
+              <div class="input-group-wrapper">
+                  <input type="text" name="origin" id="suggest_origin" class="form-control" required placeholder="e.g., SM City Cebu">
+                  <div class="pin-controls" style="margin-top: 5px; display: flex; gap: 5px;">
+                      <button type="button" id="pinSuggestOriginBtn" class="btn btn-sm" style="flex:1;">
+                          <i class="fa-solid fa-map-pin"></i> Pin
+                      </button>
+                      <button type="button" id="detectSuggestLocationBtn" class="btn btn-sm" style="flex:1;">
+                          <i class="fa-solid fa-location-crosshairs"></i> Detect Location
+                      </button>
+                  </div>
+              </div>
               
               <label for="suggest_destination">Route Destination</label>
-              <input type="text" name="destination" id="suggest_destination" class="form-control" required>
+              <div class="input-group-wrapper">
+                  <input type="text" name="destination" id="suggest_destination" class="form-control" required placeholder="e.g., Ayala Center">
+                  <div class="pin-controls" style="margin-top: 5px;">
+                      <button type="button" id="pinSuggestDestBtn" class="btn btn-sm" style="width: 100%;">
+                          <i class="fa-solid fa-map-pin"></i> Pin Destination
+                      </button>
+                  </div>
+              </div>
               
               <label for="suggest_code">Jeepney Code</label>
               <select name="code" id="suggest_code" class="form-control" required>
@@ -313,6 +367,9 @@
               <button class="btn primary" disabled>Submit Suggestion</button>
             </div>
           {% endif %}
+            <button type="button" class="btn" id="resetSuggestBtn" style="background-color: #6c757d; color: white; flex: 1;">
+                  <i class="fa-solid fa-times"></i> Reset
+            </button>
       </div> 
     </aside>
 
